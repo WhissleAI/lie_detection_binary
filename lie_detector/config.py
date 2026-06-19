@@ -48,30 +48,20 @@ class Config:
             Path("/Users/karan/Downloads/Real-life_Deception_Detection_2016"),
         )
     )
-    av_understanding_dir: Path = field(
-        default_factory=lambda: _env_path(
-            "AV_UNDERSTANDING_DIR",
-            Path("/Users/karan/Desktop/work/whissle/live_assist/Audio-visual-understanding"),
-        )
-    )
-    whissle_python_api_dir: Path = field(
-        default_factory=lambda: _env_path(
-            "WHISSLE_PYTHON_API_DIR",
-            Path("/Users/karan/Desktop/work/whissle/live_assist/whissle_python_api"),
-        )
-    )
 
-    # --- Whissle STT -------------------------------------------------------
+    # --- Whissle gateway (local docker or cloud) ---------------------------
+    # The gateway's POST /video/analyze returns BOTH the segmented transcript
+    # (with emotion/intent/age/gender metadata + diarization) AND the per-frame
+    # visual timeline — i.e. Whissle STT + audio-visual in one call.
+    gateway_url: str = field(default_factory=lambda: _env("WHISSLE_GATEWAY_URL", "http://localhost:9000").rstrip("/"))
     whissle_api_token: str = field(default_factory=lambda: _env("WHISSLE_API_TOKEN"))
-    whissle_auth_token: str = field(default_factory=lambda: _env("WHISSLE_AUTH_TOKEN"))
-    whissle_mode: str = field(default_factory=lambda: _env("WHISSLE_MODE", "gateway").lower())
-    whissle_asr_model: str = field(default_factory=lambda: _env("WHISSLE_ASR_MODEL", "en-US-NER"))
+    metadata_tags: str = field(default_factory=lambda: _env("WHISSLE_METADATA_TAGS", "emotion,intent,age,gender"))
+    diarization: bool = field(default_factory=lambda: _env_bool("WHISSLE_DIARIZATION", True))
 
-    # --- Visual lane -------------------------------------------------------
+    # --- Visual lane (sampling + optional Claude semantic lane on the server)
     visual_sample_fps: float = field(default_factory=lambda: float(_env("VISUAL_SAMPLE_FPS", "5") or 5))
     visual_semantic_lane: bool = field(default_factory=lambda: _env_bool("VISUAL_SEMANTIC_LANE", False))
     anthropic_api_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
-    anthropic_model: str = field(default_factory=lambda: _env("ANTHROPIC_MODEL", "claude-haiku-4-5"))
 
     # --- modeling ----------------------------------------------------------
     random_seed: int = 42
@@ -102,12 +92,9 @@ class Config:
         return self.data_dir / "wav"
 
     @property
-    def stt_dir(self) -> Path:
-        return self.data_dir / "stt"
-
-    @property
-    def visual_dir(self) -> Path:
-        return self.data_dir / "visual"
+    def av_dir(self) -> Path:
+        # Fused gateway /video/analyze output (transcript + segments + visual timeline)
+        return self.data_dir / "av"
 
     @property
     def audio_dir(self) -> Path:
@@ -127,7 +114,7 @@ class Config:
 
     def ensure_dirs(self) -> None:
         for d in (
-            self.data_dir, self.wav_dir, self.stt_dir, self.visual_dir,
+            self.data_dir, self.wav_dir, self.av_dir,
             self.audio_dir, self.features_dir, self.models_dir, self.reports_dir,
         ):
             d.mkdir(parents=True, exist_ok=True)

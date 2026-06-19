@@ -1,1 +1,225 @@
-# case_data_builder
+# Binary Lie Detector — Real-life Trial Deception
+
+A self-contained, reproducible pipeline that predicts **deceptive vs. truthful**
+from short courtroom video clips, fusing three modalities:
+
+| Lane | Source | Signals |
+|---|---|---|
+| **Text** | Whissle STT (gateway `/video/analyze`) | transcript + per-segment **emotion / intent / age / gender** metadata, entities, diarization, word timing |
+| **Visual** | Audio-visual hybrid intelligence (same gateway call) | per-frame **emotion, head pose, gaze, blink, mouth, attention** + hand gestures |
+| **Audio** | local prosody (librosa) | pitch (F0), jitter/shimmer, pauses, voice quality |
+
+The text + visual features come from a **single Whissle gateway call** —
+`POST /video/analyze` runs Whissle ASR (with metadata tags) and the audio-visual
+lane, then fuses them. Prosody is a complementary local lane. Everything else —
+feature engineering, speaker-independent evaluation, and the classifier — lives
+in this repo.
+
+> ⚠️ **External dependency — the Whissle gateway is NOT in this repo.**
+> The STT (transcript + metadata) and visual feature extraction run on the
+> **Whissle gateway Docker** (`whissleasr/whissle-gateway`, port 9000). This repo
+> only *calls* it over HTTP and parses the result. You must have the gateway
+> running and a `wh_` token to do the real extraction. See **[docs/GATEWAY.md](docs/GATEWAY.md)**
+> for how to run it, the full request/response contract, and troubleshooting.
+> Only the audio-prosody lane runs locally here (needs `ffmpeg`).
+
+> **Dataset:** *Real-life Trial Deception Detection* (Pérez-Rosas et al., 2015,
+> Univ. of Michigan): 121 clips (61 deceptive / 60 truthful) from real trials.
+
+> 🎓 **Taking this forward?** Start with **[docs/NEXT_STEPS.md](docs/NEXT_STEPS.md)** —
+> current status, the immediate to-do (real gateway pass), and research ideas.
+
+---
+
+## Why this is harder than it looks (and how we handle it)
+
+The 121 clips come from only **~33 unique speakers** — one defendant (Jodi Arias)
+accounts for **32 clips**, and **7 speakers appear in both classes**. A random
+train/test split lets a model memorise *who is speaking* instead of *whether they
+are lying*, producing inflated, meaningless accuracy.
+
+**We evaluate with Leave-One-Speaker-Out (LOSO) cross-validation**: every clip
+from a given person is held out together. Speaker identity is parsed from the
+dataset README and used as the CV grouping key. This is the only honest estimate
+of generalisation to an unseen person — and it is the headline methodology of
+this project.
+
+---
+
+## Architecture
+
+```
+                    Real-life trial clip (.mp4)
+                              │
+              ┌───────────────┴────────────────┐
+              ▼                                 ▼
+   Whissle gateway  POST /video/analyze     ffmpeg → 16k wav
+   (STT + audio-visual, fused)                   │
+              │                                  ▼
+   ┌──────────┴───────────┐              prosody (librosa)
+   ▼                      ▼                      │
+ transcript+segments   visual_timeline           │
+ (emotion/intent/...)  (face/pose/gaze/...)       │
+   │                      │                       │
+   ▼                      ▼                       ▼
+ text_features        visual_features        audio_features
+   └──────────┬───────────┴───────────┬──────────┘
+              ▼                        ▼
+        multimodal feature matrix (one row / clip)
+              │
+              ▼
+   Leave-One-Speaker-Out CV  →  LogReg / SVM / RandomForest / HistGBM
+              │
+              ▼
+   metrics (acc / balanced-acc / AUC / F1) + per-modality ablations
+   + permutation feature importance  →  best_model.joblib
+```
+
+---
+
+## Setup
+
+Prerequisites: **Python 3.10+**, **ffmpeg** on PATH (`brew install ffmpeg` /
+`apt install ffmpeg`), and access to a **Whissle gateway** (the local docker
+`whissle-gateway` on `:9000`, or `https://api.whissle.ai`).
+
+```bash
+cd lie_detection_binary
+./setup.sh                      # creates .venv, installs deps, installs this package
+source .venv/bin/activate
+
+cp .env.example .env            # then edit .env:
+#   WHISSLE_API_TOKEN=wh_...    (required for the gateway STT + visual step)
+#   WHISSLE_GATEWAY_URL=http://localhost:9000
+#   DECEPTION_DATASET_DIR=/path/to/Real-life_Deception_Detection_2016
+```
+
+The gateway requires `Authorization: Bearer wh_...`. Create a token at
+<https://lulu.whissle.ai/access>.
+
+---
+
+## Usage
+
+Run the whole pipeline:
+
+```bash
+python scripts/run_all.py                 # real: gateway STT + audio-visual + prosody
+python scripts/run_all.py --limit 5       # quick smoke run on 5 clips
+python scripts/run_all.py --bootstrap     # offline: bundled transcripts (text+audio only)
+```
+
+…or step by step:
+
+```bash
+python scripts/01_build_manifest.py       # clips → labels + speaker groups  (no token)
+python scripts/02_extract_av.py           # gateway /video/analyze → STT + visual  (token)
+python scripts/03_extract_audio.py        # librosa prosody                  (no token)
+python scripts/04_build_features.py       # assemble feature matrix          (no token)
+python scripts/05_train.py                # LOSO CV, ablations, importance    (no token)
+```
+
+Each extraction step is **resumable** (skips clips already done; `--overwrite`
+to force) and accepts `--limit N` for quick tests.
+
+### Bootstrap mode (no token yet)
+
+`--bootstrap` builds text-only records from the dataset's bundled transcripts so
+you can exercise the text + audio pipeline immediately. Swap in your
+`WHISSLE_API_TOKEN` and rerun `02_extract_av.py --overwrite` to get the real
+metadata-rich transcripts **and** the visual lane.
+
+---
+
+## Outputs
+
+```
+data/
+  manifest.csv                 clip → label, speaker, role
+  wav/<clip>.wav               16 kHz mono audio (for prosody)
+  av/<clip>.json               fused gateway response (transcript + segments + visual_timeline)
+  audio/<clip>.json            prosody features
+  features/features.parquet    the multimodal feature matrix (+ .csv)
+  reports/cv_results.csv        model × modality → LOSO metrics
+  reports/feature_importance.csv
+  reports/summary.json
+  models/best_model.joblib      refit best pipeline + metadata
+```
+
+`05_train.py` prints a table like:
+
+```
+        model     modality  n_features  accuracy  balanced_accuracy  roc_auc    f1
+     hist_gbm          all         121     0.7xx              0.7xx    0.7xx  0.7xx
+       logreg   text+audio          76     0.6xx              ...
+ majority_baseline      —            0     0.504              0.500      nan  0.671
+```
+
+---
+
+## Feature reference
+
+**Text (`txt_*`)** — psycholinguistic markers grounded in deception research
+(Newman & Pennebaker; Vrij): first-person-singular vs. plural pronoun rates,
+negations, tentative/certainty/cognitive/exclusive/motion word rates, negative−
+positive emotion, type-token ratio, disfluency. Plus Whissle STT metadata:
+audio-emotion distribution across segments, distinct intents, entity counts,
+word confidence, speaker count, words/second.
+
+**Visual (`vis_*`)** — aggregated over sampled frames where the speaker's face is
+detected: emotion fractions + intensities + entropy, **gaze aversion**, head-pose
+mean/spread and frame-to-frame **motion (fidgeting)**, blink rate, attention
+(engaged) fraction, mouth-openness, speaking fraction, hand-gesture presence/
+diversity, and `face_detect_rate` for coverage.
+
+**Audio (`aud_*`)** — F0 mean/std/range/voiced-fraction + jitter proxy, RMS
+loudness + shimmer proxy, silence ratio / pause count / mean pause length /
+pause density, ZCR and spectral centroid/bandwidth/rolloff.
+
+---
+
+## Project layout
+
+```
+lie_detector/
+  config.py                 env-driven paths + gateway settings
+  dataset.py                manifest + speaker parsing from the README
+  media.py                  ffmpeg audio extract / probe
+  io_utils.py               json + cache helpers
+  extraction/
+    gateway.py              POST /video/analyze (STT + audio-visual)  ← step 02
+    audio_prosody.py        librosa prosody                            ← step 03
+  features/
+    text_features.py        txt_*   (transcript + STT metadata)
+    visual_features.py      vis_*   (visual_timeline aggregation)
+    audio_features.py       aud_*   (prosody passthrough + derived)
+    assemble.py             join → multimodal matrix
+  modeling/
+    metrics.py              binary metrics
+    train.py                LOSO CV, models, ablations, importance
+scripts/                    01…05 + run_all.py
+tests/                      smoke tests
+docs/
+  GATEWAY.md                the external Whissle gateway: how to run it + contract
+  NEXT_STEPS.md             handoff: status + research ideas (read this first)
+```
+
+---
+
+## Notes, limitations, and ethics
+
+- **Small, biased sample.** 121 clips / ~33 speakers from US trials. Results are
+  a research signal, not a courtroom tool. Expect LOSO accuracy in the ~60–75%
+  range — well above the ~50% base rate, far from "proof".
+- **Deception detection is not solved.** No model here infers guilt; it predicts
+  a dataset label derived from verdicts/exonerations. Do **not** deploy this to
+  judge real people. Treat outputs as probabilistic and contestable.
+- **Reproducibility.** Fixed seed, deterministic LOSO folds, resumable caches.
+- The bundled `Annotation/All_Gestures_*.csv` (human-annotated gestures) is a
+  *reference baseline* from the original paper; we extract our own features and
+  do not train on those labels.
+
+## Citation
+
+Pérez-Rosas, Abouelenien, Mihalcea, Burzo. *Deception Detection using Real-life
+Trial Data.* ICMI 2015.

@@ -1,27 +1,24 @@
 # Core scientific stack
-# NOTE: mediapipe (audio-visual lane) requires numpy < 2, so we pin it here.
-numpy<2
+numpy<2                # librosa/numba stack is happiest on numpy<2
 scipy>=1.10,<1.14
 pandas>=2.0
 scikit-learn>=1.3
 pyarrow>=14.0          # parquet feature matrix
 
-# Audio-visual feature extraction (drives Audio-visual-understanding/LocalVisionEngine)
-opencv-python>=4.9
-mediapipe>=0.10.14
+# Gateway calls (STT + audio-visual via POST /video/analyze)
+httpx>=0.27
 
-# Audio prosody features
+# Audio prosody features (complementary local acoustic lane)
 librosa>=0.10
 soundfile>=0.12
 
-# Whissle STT client (also installed editable from ../whissle_python_api by setup.sh)
-httpx>=0.27
-
-# Optional: Claude semantic visual lane + any LLM text features
-anthropic>=0.40
-
-# Tooling / plotting / progress
+# Tooling / plotting / progress / tests
 python-dotenv>=1.0
 tqdm>=4.66
 joblib>=1.3
 matplotlib>=3.7
+pytest>=7.4
+
+# NOTE: visual + STT features come from the Whissle gateway's /video/analyze,
+# so no local MediaPipe/OpenCV is required. ffmpeg/ffprobe must be on PATH for
+# the prosody lane's audio decode (brew install ffmpeg / apt install ffmpeg).
