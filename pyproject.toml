@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lie-detector-binary"
+version = "0.1.0"
+description = "Binary deception detector on the Real-life Trial Deception dataset using Whissle STT + audio-visual hybrid intelligence."
+requires-python = ">=3.10"
+readme = "README.md"
+
+[tool.setuptools.packages.find]
+include = ["lie_detector*"]
