@@ -19,3 +19,6 @@ data/
 
 # pytest
 .pytest_cache/
+
+# generated paper PDF (regenerate via marketing_post_agent)
+paper/*.pdf
