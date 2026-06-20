@@ -47,22 +47,25 @@ _INSTRUCTION = (
 # caution that behavioural cues are weak, and calibration toward 0.5.
 _INSTRUCTION_NEUTRAL = (
     "You are a careful, impartial analyst deciding whether a short courtroom "
-    "statement is TRUTHFUL or DECEPTIVE, based on automatically-extracted "
-    "multimodal evidence (transcript, speech metadata, acoustic prosody, and a "
-    "visual timeline aligned to speech).\n\n"
-    "Calibrate carefully:\n"
-    "- BASE RATE: this set is balanced — about 50% of speakers are truthful and "
-    "50% deceptive. Do NOT assume deception by default.\n"
-    "- Behavioural cues (nervousness, gaze aversion, pauses, emotion, fidgeting) "
-    "are WEAK and AMBIGUOUS: truthful people under high-stakes courtroom stress "
-    "show them too. They are not proof of lying.\n"
-    "- Weigh evidence for BOTH interpretations symmetrically before deciding.\n"
-    "- Assign a high deception_probability ONLY when evidence clearly favours "
-    "deception; when ambiguous, stay near 0.5.\n\n"
+    "statement is TRUTHFUL or DECEPTIVE, from automatically-extracted multimodal "
+    "evidence (transcript, speech metadata, acoustic prosody, a visual timeline).\n\n"
+    "How to weigh the evidence (important):\n"
+    "- BASE RATE: this set is balanced — ~50% truthful, ~50% deceptive. Do NOT "
+    "default to deceptive. If you notice you are calling most clips deceptive, "
+    "recalibrate: a confident, fluent, or even nervous speaker is just as likely "
+    "truthful.\n"
+    "- VERBAL CONTENT IS THE STRONGEST SIGNAL: what they actually say — direct "
+    "denials, internal contradictions, vagueness vs. concrete verifiable detail, "
+    "admissions, the deception-intent probabilities — should drive your judgement.\n"
+    "- BEHAVIOURAL CUES ARE WEAK: nervousness, gaze aversion, pauses, fidgeting, "
+    "emotion are unreliable — truthful people under courtroom stress show them too. "
+    "Use them only as minor tie-breakers, never as proof.\n"
+    "- Reason step by step: first estimate from the transcript/intent content, then "
+    "nudge only slightly for prosody/visual. Stay near 0.5 when content is neutral.\n\n"
     "Return ONLY JSON with: truthful_evidence (array of short strings), "
     "deceptive_evidence (array of short strings), verdict "
-    "('truthful'|'deceptive'), deception_probability (0..1, calibrated), "
-    "rationale (one sentence). Do not refuse.\n\n"
+    "('truthful'|'deceptive'), deception_probability (0..1, calibrated — a true "
+    "probability, not a hunch), rationale (one sentence). Do not refuse.\n\n"
     "EVIDENCE:\n"
 )
 
@@ -180,41 +183,78 @@ def build_multimodal_summary(av: dict, audio: dict) -> str:
     return "\n".join(parts)
 
 
-def reason_over_features(av: dict, audio: dict, clip_id: str, cfg=CFG, neutral: bool = False) -> dict:
-    """Build the synced summary, ask Gemini to judge, store input + output.
+def reason_over_features(av: dict, audio: dict, clip_id: str, cfg=CFG, neutral: bool = True,
+                         provider: str = "gemini", n_samples: int = 1) -> dict:
+    """Build the synced summary, ask an LLM to judge, store input + output.
 
-    neutral=True uses the debiased v2 prompt (base-rate-anchored, symmetric
-    evidence) and writes to gemini_reason_v2/; otherwise the v1 forensic prompt.
+    neutral=True uses the debiased prompt (base-rate-anchored, symmetric evidence).
+    provider in {"gemini","claude"} selects the judge LLM; n_samples>1 enables
+    self-consistency (sample at temperature, average probability / majority vote).
     """
-    from google.genai import types
-
     summary = build_multimodal_summary(av, audio)
     instruction = _INSTRUCTION_NEUTRAL if neutral else _INSTRUCTION
-    schema = _SCHEMA_NEUTRAL if neutral else _VERDICT_SCHEMA
-    out_dir = cfg.gemini_reason_v2_dir if neutral else cfg.gemini_reason_dir
+    prompt = instruction + summary
+    temp = 0.0 if n_samples <= 1 else 0.6
 
-    client = _client(cfg)
-    resp = client.models.generate_content(
-        model=cfg.gemini_model,
-        contents=[instruction + summary],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=schema,
-            temperature=0.0,
-        ),
-    )
-    data = resp.parsed if getattr(resp, "parsed", None) else _loads(resp.text)
+    samples = [_judge(prompt, cfg, provider, temp) for _ in range(max(1, n_samples))]
+    samples = [s for s in samples if s]
+    probs = [float(s.get("deception_probability", 0.5)) for s in samples] or [0.5]
+    prob = sum(probs) / len(probs)
+    verdict = "deceptive" if prob >= 0.5 else "truthful"
+    last = samples[-1] if samples else {}
 
+    out_dir = cfg.claude_reason_dir if provider == "claude" else cfg.gemini_reason_v2_dir
     record = {
         "clip_id": clip_id,
-        "model": cfg.gemini_model,
-        "prompt_variant": "neutral_v2" if neutral else "forensic_v1",
-        "verdict": data.get("verdict"),
-        "deception_probability": float(data.get("deception_probability", 0.5)),
-        "truthful_evidence": data.get("truthful_evidence", []),
-        "deceptive_evidence": data.get("deceptive_evidence", data.get("key_evidence", [])),
-        "rationale": data.get("rationale", ""),
+        "provider": provider,
+        "model": cfg.anthropic_model if provider == "claude" else cfg.gemini_model,
+        "prompt_variant": "neutral_v3",
+        "n_samples": len(samples),
+        "verdict": verdict,
+        "deception_probability": prob,
+        "truthful_evidence": last.get("truthful_evidence", []),
+        "deceptive_evidence": last.get("deceptive_evidence", last.get("key_evidence", [])),
+        "rationale": last.get("rationale", ""),
         "input_summary": summary,   # store exactly what we sent
     }
     write_json(out_dir / f"{clip_id}.json", record)
     return record
+
+
+def _judge(prompt: str, cfg, provider: str, temperature: float) -> dict:
+    """Single LLM-as-judge call. Returns parsed JSON dict (or {} on failure)."""
+    if provider == "claude":
+        return _judge_claude(prompt, cfg, temperature)
+    return _judge_gemini(prompt, cfg, temperature)
+
+
+def _judge_gemini(prompt: str, cfg, temperature: float) -> dict:
+    from google.genai import types
+    client = _client(cfg)
+    resp = client.models.generate_content(
+        model=cfg.gemini_model,
+        contents=[prompt],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=_SCHEMA_NEUTRAL,
+            temperature=temperature,
+        ),
+    )
+    return resp.parsed if getattr(resp, "parsed", None) else _loads(resp.text)
+
+
+def _judge_claude(prompt: str, cfg, temperature: float) -> dict:
+    import anthropic
+    if not cfg.anthropic_api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY not set (add it to .env).")
+    client = anthropic.Anthropic(api_key=cfg.anthropic_api_key)
+    msg = client.messages.create(
+        model=cfg.anthropic_model,
+        max_tokens=1024,
+        temperature=temperature,
+        system="Respond with ONLY a single JSON object, no prose, no markdown fences.",
+        messages=[{"role": "user", "content": prompt},
+                  {"role": "assistant", "content": "{"}],  # prefill → clean JSON
+    )
+    text = "{" + "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+    return _loads(text)

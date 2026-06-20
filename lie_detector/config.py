@@ -73,6 +73,7 @@ class Config:
     visual_sample_fps: float = field(default_factory=lambda: float(_env("VISUAL_SAMPLE_FPS", "5") or 5))
     visual_semantic_lane: bool = field(default_factory=lambda: _env_bool("VISUAL_SEMANTIC_LANE", False))
     anthropic_api_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
+    anthropic_model: str = field(default_factory=lambda: _env("ANTHROPIC_MODEL", "claude-sonnet-4-6"))
 
     # --- Gemini (LLM video baseline) --------------------------------------
     gemini_api_key: str = field(default_factory=lambda: _env("GEMINI_API_KEY") or _env("GOOGLE_API_KEY"))
@@ -126,6 +127,11 @@ class Config:
         return self.data_dir / "gemini_reason_v2"
 
     @property
+    def claude_reason_dir(self) -> Path:
+        # Claude as the LLM-as-judge over our feature digest
+        return self.data_dir / "claude_reason"
+
+    @property
     def audio_dir(self) -> Path:
         return self.data_dir / "audio"
 
@@ -144,8 +150,8 @@ class Config:
     def ensure_dirs(self) -> None:
         for d in (
             self.data_dir, self.wav_dir, self.av_dir, self.gemini_dir,
-            self.gemini_reason_dir, self.audio_dir, self.features_dir,
-            self.models_dir, self.reports_dir,
+            self.gemini_reason_dir, self.gemini_reason_v2_dir, self.claude_reason_dir,
+            self.audio_dir, self.features_dir, self.models_dir, self.reports_dir,
         ):
             d.mkdir(parents=True, exist_ok=True)
 
