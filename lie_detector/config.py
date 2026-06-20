@@ -55,6 +55,8 @@ class Config:
     # visual timeline — i.e. Whissle STT + audio-visual in one call.
     gateway_url: str = field(default_factory=lambda: _env("WHISSLE_GATEWAY_URL", "http://localhost:9000").rstrip("/"))
     whissle_api_token: str = field(default_factory=lambda: _env("WHISSLE_API_TOKEN"))
+    # ASR model to request from /asr/transcribe (empty = gateway default).
+    asr_model_id: str = field(default_factory=lambda: _env("WHISSLE_ASR_MODEL", "whissle-large"))
     metadata_tags: str = field(default_factory=lambda: _env("WHISSLE_METADATA_TAGS", "emotion,intent,age,gender"))
     diarization: bool = field(default_factory=lambda: _env_bool("WHISSLE_DIARIZATION", True))
 
@@ -62,6 +64,10 @@ class Config:
     visual_sample_fps: float = field(default_factory=lambda: float(_env("VISUAL_SAMPLE_FPS", "5") or 5))
     visual_semantic_lane: bool = field(default_factory=lambda: _env_bool("VISUAL_SEMANTIC_LANE", False))
     anthropic_api_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
+
+    # --- Gemini (LLM video baseline) --------------------------------------
+    gemini_api_key: str = field(default_factory=lambda: _env("GEMINI_API_KEY") or _env("GOOGLE_API_KEY"))
+    gemini_model: str = field(default_factory=lambda: _env("GEMINI_MODEL", "gemini-2.5-pro"))
 
     # --- modeling ----------------------------------------------------------
     random_seed: int = 42
@@ -97,6 +103,20 @@ class Config:
         return self.data_dir / "av"
 
     @property
+    def gemini_dir(self) -> Path:
+        return self.data_dir / "gemini"
+
+    @property
+    def gemini_reason_dir(self) -> Path:
+        # Gemini reasoning over our extracted features (not raw video)
+        return self.data_dir / "gemini_reason"
+
+    @property
+    def gemini_reason_v2_dir(self) -> Path:
+        # v2: neutral, base-rate-anchored, symmetric-evidence prompt (debiased)
+        return self.data_dir / "gemini_reason_v2"
+
+    @property
     def audio_dir(self) -> Path:
         return self.data_dir / "audio"
 
@@ -114,8 +134,9 @@ class Config:
 
     def ensure_dirs(self) -> None:
         for d in (
-            self.data_dir, self.wav_dir, self.av_dir,
-            self.audio_dir, self.features_dir, self.models_dir, self.reports_dir,
+            self.data_dir, self.wav_dir, self.av_dir, self.gemini_dir,
+            self.gemini_reason_dir, self.audio_dir, self.features_dir,
+            self.models_dir, self.reports_dir,
         ):
             d.mkdir(parents=True, exist_ok=True)
 

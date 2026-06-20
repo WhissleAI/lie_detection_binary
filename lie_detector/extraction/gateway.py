@@ -81,6 +81,7 @@ def transcribe_audio(wav_path: Path, cfg=CFG, timeout: float = 180.0) -> dict:
         headers=_auth(cfg),
         data={
             "language": "en",
+            "model": cfg.asr_model_id,   # e.g. whissle-large
             "metadata_prob": "true",     # emotion/intent/age/gender + prob distributions
             "word_timestamps": "true",   # per-word timing, pauses, speech rate
             "use_lm": "true",
@@ -139,6 +140,29 @@ def extract_clip(video_path: Path, clip_id: str, cfg=CFG) -> dict:
     record["video_params"] = video.get("video_params", {})
 
     write_json(cfg.av_dir / f"{clip_id}.json", record)
+    return record
+
+
+def refresh_asr(video_path: Path, clip_id: str, cfg=CFG) -> dict:
+    """Re-run ONLY the ASR/text lane (e.g. after switching ASR model) and merge
+    into the existing av record, preserving the visual_timeline. Falls back to a
+    full extract_clip if no prior record exists."""
+    from ..io_utils import read_json
+
+    out = cfg.av_dir / f"{clip_id}.json"
+    if not out.exists():
+        return extract_clip(video_path, clip_id, cfg)
+
+    wav_path = cfg.wav_dir / f"{clip_id}.wav"
+    if not wav_path.exists():
+        extract_wav(video_path, wav_path, sample_rate=16000, mono=True)
+
+    record = read_json(out)
+    asr = transcribe_audio(wav_path, cfg)
+    record["text"] = asr.get("transcript", "")
+    record.update({k: asr[k] for k in _ASR_KEEP if k in asr})
+    record["asr_model"] = asr.get("model")
+    write_json(out, record)
     return record
 
 

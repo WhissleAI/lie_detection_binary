@@ -180,38 +180,62 @@ signal; the visual lane adds a modest independent ~0.6 AUC on its own.
 
 ---
 
-## Comparison to the original paper (Pérez-Rosas et al., 2015)
+## Results & comparison (Pérez-Rosas et al., 2015 + LLM baselines)
 
-The paper reports up to **75.2%** accuracy; our headline (speaker-independent) is
-lower. That gap is **methodology, not a modelling flaw** — `06_paper_comparison.py`
-runs every feature set under both CV protocols (pooled out-of-fold accuracy):
+All numbers below use the **whissle-large** ASR model (transcript + emotion/age/
+gender/**intent** probabilities). The paper reports up to **75.2%** accuracy; our
+honest, speaker-independent headline is lower — and that gap is **the CV protocol,
+not a modelling flaw**. `06_paper_comparison.py` runs every feature set under both
+protocols (pooled out-of-fold accuracy):
 
-| feature set | model | leave-1-**video**-out (paper) | leave-1-**speaker**-out (ours) | leakage gap |
+| feature set | model | leave-1-**video**-out (paper) | leave-1-**speaker**-out (honest) | leakage gap |
 |---|---|---:|---:|---:|
-| our_all (text+audio+visual) | RandomForest | **0.802** | 0.545 | +0.256 |
-| our_text (auto) | RandomForest | 0.736 | 0.545 | +0.190 |
+| our_text (auto) | RandomForest | 0.752 | 0.587 | +0.165 |
 | our_visual (auto) | RandomForest | 0.719 | 0.612 | +0.107 |
 | our_audio (auto) | DecisionTree | 0.719 | 0.570 | +0.149 |
-| manual_gestures (paper's CSV) | RandomForest | 0.769 | 0.686 | +0.083 |
+| our_all (text+audio+visual) | RandomForest | 0.752 | 0.529 | +0.223 |
+| manual_gestures (paper's CSV) | RandomForest | 0.769 | **0.686** | +0.083 |
+| **gemini_features** (LLM video scores) | RandomForest | 0.694 | **0.678** | +0.017 |
+| gemini+our_all | RandomForest | **0.777** | 0.620 | +0.157 |
 | *majority baseline* | — | 0.504 | 0.504 | — |
 
-Takeaways:
-1. **Their protocol leaks speaker identity.** Leave-one-*video*-out keeps 31 of
-   Jodi Arias's 32 clips in training when testing the 32nd, so the model learns
-   the person. The "leakage gap" column is the inflation it buys (+0.07 to +0.26).
-2. **Our modelling is not the problem.** Under the *paper's own protocol* our full
-   multimodal system scores **0.802 — above their 75.2%**, and our run of their
-   manual gesture features reproduces their ~0.76. We simply report the honest
-   speaker-independent number instead.
-3. **Manual > auto for visual, and it generalises better.** The human-coded
-   gestures (gold, shipped with the dataset) hold up best under speaker-independent
-   CV (0.686) — our automatic MediaPipe visual lane is noisier (0.612).
-4. **We have the text+audio+visual experiment** (`our_all`); the paper's *system*
-   used only text + manual gestures (audio appears only in their human study).
+**LLM zero-shot baselines** (Gemini 2.5 Pro, no training → no CV, no leakage):
 
-> Bottom line: 75% on this dataset is a leave-one-video-out number. The
-> scientifically honest, speaker-independent result is ~0.60–0.69 — and under
-> matched protocols we meet or beat the paper.
+| approach | accuracy | balanced acc | AUC | deceptive-call rate |
+|---|---:|---:|---:|---|
+| **Gemini direct VIDEO** | **0.669** | **0.669** | **0.749** | 55% (calibrated) |
+| Gemini over-features (v1 forensic prompt) | 0.554 | 0.550 | 0.631 | 93% (biased) |
+| Gemini over-features (v2 neutral prompt) | 0.512 | 0.511 | 0.516 | 73% |
+
+Our **trained** models under leave-one-speaker-out (step 05, full sweep) peak at
+**AUC 0.670** (whissle-large, up from 0.655 on the small ASR model).
+
+Takeaways:
+1. **The paper's protocol leaks speaker identity.** Leave-one-*video*-out keeps 31
+   of Jodi Arias's 32 clips in training when testing the 32nd, so the model learns
+   the person. The "leakage gap" column is the inflation it buys (+0.02 to +0.26).
+   Under the paper's own protocol we match it (our_text/our_all 0.752) and beat it
+   when we add the LLM's video reads (gemini+our_all **0.777**).
+2. **Best honest result = Gemini watching the raw video** (zero-shot **AUC 0.749**,
+   balanced 0.669, no training, no leakage). It's well-calibrated (55% deceptive
+   calls vs the 50% base rate).
+3. **Reasoning over our feature *digest* fails** (AUC 0.52–0.63, chance-level) even
+   though the *same features* train to AUC 0.67. Summarising the clip into a list
+   of cues both loses information the video carries and primes the LLM toward
+   "deceptive." A neutral, base-rate-anchored prompt (v2) cuts the bias
+   (deceptive-calls 93%→73%, truthful 7→17/60) but can't manufacture signal the
+   digest doesn't hold. **Watching beats reading our digest; and a trained model
+   beats the LLM at reading it.**
+4. **Manual gold gestures generalise best of the feature sets** (speaker-out 0.686);
+   our automatic MediaPipe visual lane is noisier (0.612). Gemini's *video-derived*
+   feature scores are a close second (0.678) and the most leakage-robust (gap +0.02).
+5. **whissle-large helped** — better transcripts + intent lifted the trained models
+   (AUC 0.655→0.670) — but did not rescue the feature-digest LLM (still chance).
+
+> Bottom line: 75% on this dataset is a leave-one-video-out (speaker-leaky) number.
+> The honest, speaker-independent ceiling here is ~0.65–0.69 accuracy / ~0.67–0.75
+> AUC, and the single best honest result is **Gemini reading the raw video
+> (AUC 0.749)** — not any feature-engineered pipeline.
 
 ## Feature reference
 
