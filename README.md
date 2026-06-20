@@ -237,6 +237,33 @@ Takeaways:
 > AUC, and the single best honest result is **Gemini reading the raw video
 > (AUC 0.749)** — not any feature-engineered pipeline.
 
+### Best systems — with vs. without the LLM (`09_best_fusion.py`)
+
+Concatenating all 178 features *hurts* (gemini_features alone beats gemini+our_all)
+— 121 clips can't support 178 dims. **Feature selection + late fusion** fix it.
+Two deployable configurations, both leave-one-speaker-out (honest):
+
+| config | best method | accuracy | AUC |
+|---|---|---:|---:|
+| **A — with Gemini** | `SelectKBest(k=10)` on our+gemini features | 0.669 | **0.747** |
+| | late-fusion: our model ⊕ Gemini's video prob | **0.686** | 0.707 |
+| **B — self-hosted, no LLM** | `hist_gbm` on our features only | 0.562 | **0.670** |
+
+- **Config A** matches Gemini-video-alone (0.747) but as a *trained, calibratable*
+  classifier. Its top features are Gemini's holistic reads — `defensiveness`,
+  `overall_credibility`, `story_specificity`, `microexpression_leakage` — plus our
+  head-pitch, vocal F0, and negation rate.
+- **Config B** sends **no raw audio/video to any external LLM** — features are
+  extracted only by the (self-hostable) Whissle gateway + local prosody, and a
+  trained model predicts. Honest AUC **0.670**. Top cues: head-pitch (looking
+  down), vocal pitch, negations, fear expression.
+- Naive concat: AUC 0.640 → `SelectKBest(k=10)`: **0.747**. The lesson is
+  selection, not concatenation.
+
+> So we can show **both**: a stronger result *with* Gemini (AUC 0.747 / acc 0.686),
+> and a respectable fully self-hosted result *without any LLM and without raw media
+> leaving the box* (AUC 0.670).
+
 ## Feature reference
 
 **Text (`txt_*`)** — two groups:
