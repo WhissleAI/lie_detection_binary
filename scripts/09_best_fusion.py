@@ -107,18 +107,22 @@ def main():
         results.append({"config": config, "method": name, "n": len(cols),
                         "accuracy": a, "balanced_acc": b, "roc_auc": au})
 
+    K_GRID = (8, 12, 15, 20, 25, 30, 40, 50, 60, 80)
+
     # ---------- CONFIG B: self-hosted, NO LLM (our features only) ----------
     run("B no-LLM", "all-our-features  logreg-L2", ours, lr())
     run("B no-LLM", "L1-sparse         logreg-L1", ours, lr(C=0.5, penalty="l1"))
-    for k in (10, 15, 20, 30):
-        run("B no-LLM", f"SelectKBest(k={k})  logreg", ours, lr(k=k))
+    for k in K_GRID:
+        if k <= len(ours):
+            run("B no-LLM", f"SelectKBest(k={k})  logreg", ours, lr(k=k))
     run("B no-LLM", "hist_gbm", ours, hgb())
 
     # ---------- CONFIG A: WITH Gemini --------------------------------------
     run("A +Gemini", "gemini_features only  logreg", gem_cols, lr())
     run("A +Gemini", "gemini+our concat     logreg", gem_cols + ours, lr())
-    for k in (10, 15, 20):
-        run("A +Gemini", f"SelectKBest(k={k}) on all", gem_cols + ours, lr(k=k))
+    for k in K_GRID:
+        if k <= len(gem_cols + ours):
+            run("A +Gemini", f"SelectKBest(k={k}) on all", gem_cols + ours, lr(k=k))
 
     # Late fusion: average our-features OOF prob with Gemini's zero-shot video prob.
     _, our_prob = oof(df, ours, lr(k=20), y, groups)

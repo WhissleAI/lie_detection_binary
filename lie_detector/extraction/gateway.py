@@ -169,6 +169,25 @@ def refresh_asr(video_path: Path, clip_id: str, cfg=CFG) -> dict:
     return record
 
 
+def refresh_visual(video_path: Path, clip_id: str, cfg=CFG) -> dict:
+    """Re-run ONLY the visual lane (/video/analyze) and merge the fresh
+    visual_timeline into the existing av record, preserving the (enriched) text
+    lane. Falls back to a full extract_clip if no prior record exists."""
+    from ..io_utils import read_json
+
+    out = cfg.av_dir / f"{clip_id}.json"
+    if not out.exists():
+        return extract_clip(video_path, clip_id, cfg)
+    record = read_json(out)
+    video = analyze_video(video_path, cfg)
+    record["visual_timeline"] = video.get("visual_timeline", [])
+    record["semantic_samples"] = video.get("semantic_samples", [])
+    record["video_models"] = video.get("models", {})
+    record["video_params"] = video.get("video_params", {})
+    write_json(out, record)
+    return record
+
+
 def health(cfg=CFG, timeout: float = 10.0) -> dict:
     """Quick reachability/auth check against the gateway video service.
 

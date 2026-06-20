@@ -27,7 +27,7 @@ from pathlib import Path
 from lie_detector.config import CFG
 from lie_detector.dataset import load_manifest
 from lie_detector.io_utils import write_json
-from lie_detector.extraction.gateway import extract_clip, refresh_asr, health
+from lie_detector.extraction.gateway import extract_clip, refresh_asr, refresh_visual, health
 
 
 def _bootstrap_record(clip_id: str, label: str) -> dict:
@@ -54,6 +54,9 @@ def main() -> None:
     ap.add_argument("--asr-only", action="store_true",
                     help="Re-run only the ASR/text lane into existing records (keeps visual_timeline). "
                          "Use after switching ASR model.")
+    ap.add_argument("--visual-only", action="store_true",
+                    help="Re-run only the visual lane into existing records (keeps the text lane). "
+                         "Use after improving the gateway's face detection.")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--overwrite", action="store_true")
     args = ap.parse_args()
@@ -75,8 +78,8 @@ def main() -> None:
     for _, row in df.iterrows():
         clip_id, label = row["clip_id"], row["label"]
         out = CFG.av_dir / f"{clip_id}.json"
-        # --asr-only refreshes existing records in place; otherwise skip unless --overwrite.
-        if out.exists() and not args.overwrite and not args.asr_only:
+        # --asr-only / --visual-only refresh existing records in place; otherwise skip unless --overwrite.
+        if out.exists() and not args.overwrite and not args.asr_only and not args.visual_only:
             skip += 1
             continue
         try:
@@ -90,6 +93,13 @@ def main() -> None:
                 meta = rec.get("metadata") or {}
                 print(f"  [{ok+fail:>3}] {clip_id}  ✓  asr={rec.get('asr_model')} "
                       f"words={len(rec.get('words', []))} intent={meta.get('intent')}")
+            elif args.visual_only:
+                rec = refresh_visual(Path(row["video_path"]), clip_id, CFG)
+                ok += 1
+                fr = rec.get("visual_timeline", [])
+                wf = sum(1 for f in fr if f.get("faces"))
+                print(f"  [{ok+fail:>3}] {clip_id}  ✓  frames={len(fr)} faces={wf} "
+                      f"rate={wf/len(fr) if fr else 0:.2f}")
             else:
                 rec = extract_clip(Path(row["video_path"]), clip_id, CFG)
                 ok += 1

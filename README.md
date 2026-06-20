@@ -245,17 +245,22 @@ Two deployable configurations, both leave-one-speaker-out (honest):
 
 | config | best method | accuracy | AUC |
 |---|---|---:|---:|
-| **A — with Gemini** | `SelectKBest(k=15)` on our+gemini features | 0.669 | **0.760** |
-| | late-fusion: our model ⊕ Gemini's video prob | **0.686** | 0.740 |
-| **B — self-hosted, no LLM** | logreg on text+audio | 0.661 | **0.682** |
-| | weighted late-fusion (.4 txt/.4 vis/.2 aud) | 0.645 | 0.655 |
+| **A — with Gemini** | late-fusion: our model ⊕ Gemini's video prob | **0.678** | **0.752** |
+| **B — self-hosted, no LLM** | `hist_gbm` on all our features | **0.678** | **0.741** |
 
-> **Config A (0.760) now beats direct Gemini-video (0.749)** — adding our features
-> to Gemini's reads improves on Gemini alone. This came from enriching the text
-> lane with the gateway's `speech_analysis` (fluency/grammar/pitch/rhythm) and a
-> **filtered deception-intent** distribution (`intent_labels` = DENIAL, CONFESSION,
-> JUSTIFICATION, AVOIDANCE, CONTRADICTION, BLAME, …), which lifted the self-hosted
-> ceiling 0.670→0.682 and with-Gemini 0.747→0.760.
+> **Both now near/above Gemini-video (0.749).** Two feature improvements got us
+> here: (1) the text lane's `speech_analysis` (fluency/grammar/pitch/rhythm) +
+> **filtered deception-intents** (`intent_labels` = DENIAL, CONFESSION,
+> JUSTIFICATION, AVOIDANCE, CONTRADICTION, …); and (2) **lowering the gateway's
+> face-detection confidence** (face-detect rate 0.50→0.80, see
+> [docs/GATEWAY.md](docs/GATEWAY.md)), which lifted the visual lane 0.61→0.674 and
+> the self-hosted system **0.670→0.741**.
+>
+> The striking result: the **fully self-hosted, no-LLM, no-raw-media-leaves**
+> system reaches **AUC 0.741 / acc 0.678 — competitive with Gemini watching the
+> raw video (0.749)** — and adding Gemini on top gives only a marginal lift to
+> 0.752. For a privacy-sensitive deployment, the self-hosted pipeline is now the
+> better trade.
 
 - **Config A** matches Gemini-video-alone (0.747) but as a *trained, calibratable*
   classifier. Its top features are Gemini's holistic reads — `defensiveness`,

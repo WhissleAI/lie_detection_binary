@@ -196,6 +196,31 @@ entropy, the speech-rate / pause / word-confidence stats, and the lexical rates.
 
 ---
 
+## Improving the visual lane (face detection)
+
+Courtroom faces are often small/oblique, so MediaPipe's **default detection
+confidence (0.5)** rejects most frames (~10% face-detect rate on the hardest
+clips). Lowering it dramatically improves coverage. In the gateway container,
+`/app/asr/video/vision/local.py` builds `FaceLandmarkerOptions` — add:
+
+```python
+min_face_detection_confidence=0.2,
+min_face_presence_confidence=0.2,
+```
+
+then restart the video service (it has `autorestart=true`, so killing its
+process works if `supervisorctl` has no socket):
+
+```bash
+docker exec whissle-gateway-liedetect sh -c \
+  "kill $(pgrep -f 'uvicorn video')"   # supervisord restarts it with the patch
+```
+
+This lifted the worst clip 0.10 → 0.16 and most clips to 0.9–1.0. Re-extract the
+visual lane only (keeps the text lane): `python scripts/02_extract_av.py
+--visual-only`. **Note:** this edit lives in the running container and is lost if
+the container is recreated — bake it into the image for a permanent fix.
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |
