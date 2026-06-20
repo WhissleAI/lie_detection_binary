@@ -247,7 +247,8 @@ Two deployable configurations, both leave-one-speaker-out (honest):
 |---|---|---:|---:|
 | **A — with Gemini** | `SelectKBest(k=10)` on our+gemini features | 0.669 | **0.747** |
 | | late-fusion: our model ⊕ Gemini's video prob | **0.686** | 0.707 |
-| **B — self-hosted, no LLM** | `hist_gbm` on our features only | 0.562 | **0.670** |
+| **B — self-hosted, no LLM** | weighted late-fusion (.4 txt/.4 vis/.2 aud) | **0.645** | 0.655 |
+| | `hist_gbm` (best AUC; threshold-tuned acc 0.645) | 0.562→0.645 | **0.670** |
 
 - **Config A** matches Gemini-video-alone (0.747) but as a *trained, calibratable*
   classifier. Its top features are Gemini's holistic reads — `defensiveness`,
@@ -255,8 +256,12 @@ Two deployable configurations, both leave-one-speaker-out (honest):
   head-pitch, vocal F0, and negation rate.
 - **Config B** sends **no raw audio/video to any external LLM** — features are
   extracted only by the (self-hostable) Whissle gateway + local prosody, and a
-  trained model predicts. Honest AUC **0.670**. Top cues: head-pitch (looking
-  down), vocal pitch, negations, fear expression.
+  trained model predicts. Honest **AUC 0.670 / accuracy ~0.645** (the naive 0.562
+  was a 0.5-threshold artifact; a weighted per-modality late-fusion is calibrated
+  to 0.645 out of the box — see `10_improve_selfhosted.py`). Top cues: head-pitch
+  (looking down), vocal pitch, negations, fear expression. AUC is **capped ~0.67
+  by the features** — ensembling/stacking/late-fusion can't beat it; only better
+  features (visual face-detection, temporal cues) would.
 - Naive concat: AUC 0.640 → `SelectKBest(k=10)`: **0.747**. The lesson is
   selection, not concatenation.
 
