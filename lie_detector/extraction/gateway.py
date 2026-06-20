@@ -83,8 +83,11 @@ def transcribe_audio(wav_path: Path, cfg=CFG, timeout: float = 180.0) -> dict:
             "language": "en",
             "model": cfg.asr_model_id,   # e.g. whissle-large
             "metadata_prob": "true",     # emotion/intent/age/gender + prob distributions
+            "top_k": str(cfg.asr_top_k),
             "word_timestamps": "true",   # per-word timing, pauses, speech rate
             "use_lm": "true",
+            "speech_analysis": str(cfg.asr_speech_analysis).lower(),  # fluency/grammar/rhythm
+            "intent_labels": cfg.deception_intent_labels,             # focused intent filter
         },
         file_path=wav_path,
         file_field=(wav_path.name, "audio/wav"),
@@ -118,7 +121,7 @@ def analyze_video(video_path: Path, cfg=CFG, timeout: float = 600.0) -> dict:
 _ASR_KEEP = (
     "transcript", "transcript_with_entities", "metadata", "metadata_probs",
     "entities", "words", "pauses", "speech_rate", "confidence",
-    "uncertain_words", "model", "inference_time",
+    "uncertain_words", "speech_analysis", "filtered_intents", "model", "inference_time",
 )
 
 

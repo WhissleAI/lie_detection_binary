@@ -245,10 +245,17 @@ Two deployable configurations, both leave-one-speaker-out (honest):
 
 | config | best method | accuracy | AUC |
 |---|---|---:|---:|
-| **A — with Gemini** | `SelectKBest(k=10)` on our+gemini features | 0.669 | **0.747** |
-| | late-fusion: our model ⊕ Gemini's video prob | **0.686** | 0.707 |
-| **B — self-hosted, no LLM** | weighted late-fusion (.4 txt/.4 vis/.2 aud) | **0.645** | 0.655 |
-| | `hist_gbm` (best AUC; threshold-tuned acc 0.645) | 0.562→0.645 | **0.670** |
+| **A — with Gemini** | `SelectKBest(k=15)` on our+gemini features | 0.669 | **0.760** |
+| | late-fusion: our model ⊕ Gemini's video prob | **0.686** | 0.740 |
+| **B — self-hosted, no LLM** | logreg on text+audio | 0.661 | **0.682** |
+| | weighted late-fusion (.4 txt/.4 vis/.2 aud) | 0.645 | 0.655 |
+
+> **Config A (0.760) now beats direct Gemini-video (0.749)** — adding our features
+> to Gemini's reads improves on Gemini alone. This came from enriching the text
+> lane with the gateway's `speech_analysis` (fluency/grammar/pitch/rhythm) and a
+> **filtered deception-intent** distribution (`intent_labels` = DENIAL, CONFESSION,
+> JUSTIFICATION, AVOIDANCE, CONTRADICTION, BLAME, …), which lifted the self-hosted
+> ceiling 0.670→0.682 and with-Gemini 0.747→0.760.
 
 - **Config A** matches Gemini-video-alone (0.747) but as a *trained, calibratable*
   classifier. Its top features are Gemini's holistic reads — `defensiveness`,

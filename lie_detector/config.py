@@ -57,6 +57,15 @@ class Config:
     whissle_api_token: str = field(default_factory=lambda: _env("WHISSLE_API_TOKEN"))
     # ASR model to request from /asr/transcribe (empty = gateway default).
     asr_model_id: str = field(default_factory=lambda: _env("WHISSLE_ASR_MODEL", "whissle-large"))
+    # Richer STT: gateway speech_analysis (fluency/grammar/rhythm) + a focused
+    # distribution over deception-relevant intents (the intent_labels filter).
+    asr_speech_analysis: bool = field(default_factory=lambda: _env_bool("WHISSLE_SPEECH_ANALYSIS", True))
+    asr_top_k: int = field(default_factory=lambda: int(_env("WHISSLE_TOP_K", "20") or 20))
+    deception_intent_labels: str = field(default_factory=lambda: _env(
+        "WHISSLE_INTENT_LABELS",
+        "DECEPTION,DENIAL,CONFESSION,ADMIT,ADMISSION,ACCUSATION,CONTRADICTION,"
+        "JUSTIFICATION,JUSTIFY,DEFEND,BLAME,AVOIDANCE,BELIEF,DISBELIEF,"
+        "DESCRIBE,NARRATE,RECALL,EXPLAIN,ASSERT,QUESTION,RESPONSE,INFORM"))
     metadata_tags: str = field(default_factory=lambda: _env("WHISSLE_METADATA_TAGS", "emotion,intent,age,gender"))
     diarization: bool = field(default_factory=lambda: _env_bool("WHISSLE_DIARIZATION", True))
 

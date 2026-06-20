@@ -173,4 +173,27 @@ def text_features(rec: dict, meta_vocab: dict[str, list[str]] | None = None) -> 
         den = sum(p for t, p in age_dist.items() if t.upper() in _AGE_ORDER)
         feats["meta_age_expected"] = (num / den) if den else 0.0
 
+    # ----------------------------------------------------------------------
+    # Focused intent filter (intent_labels) — probability per deception-relevant
+    # intent (e.g. DENIAL/CONFESSION/JUSTIFICATION/AVOIDANCE/...).
+    # ----------------------------------------------------------------------
+    for fi in rec.get("filtered_intents") or []:
+        if isinstance(fi, dict) and fi.get("label"):
+            feats[f"fintent_{fi['label'].lower()}"] = float(fi.get("probability", 0.0))
+
+    # ----------------------------------------------------------------------
+    # Gateway speech_analysis: fluency / grammar / vocabulary + pitch + rhythm.
+    # ----------------------------------------------------------------------
+    sa = rec.get("speech_analysis") or {}
+    for k in ("lexical_fluency", "vocabulary_range", "grammar_score", "fluency_score", "spoken_sec"):
+        if k in sa:
+            feats[f"sa_{k}"] = float(sa[k] or 0.0)
+    for sub in ("pitch", "rhythm"):
+        d = sa.get(sub) or {}
+        for k, v in d.items():
+            try:
+                feats[f"sa_{sub}_{k}"] = float(v)
+            except (TypeError, ValueError):
+                pass
+
     return feats
