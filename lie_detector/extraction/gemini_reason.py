@@ -248,13 +248,30 @@ def _judge_claude(prompt: str, cfg, temperature: float) -> dict:
     if not cfg.anthropic_api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set (add it to .env).")
     client = anthropic.Anthropic(api_key=cfg.anthropic_api_key)
-    msg = client.messages.create(
+    # Forced tool-use guarantees schema-valid JSON (no fragile free-text parsing).
+    tool = {"name": "submit_verdict",
+            "description": "Submit the truthful/deceptive judgement.",
+            "input_schema": _SCHEMA_NEUTRAL}
+    kwargs = dict(
         model=cfg.anthropic_model,
-        max_tokens=1024,
-        temperature=temperature,
-        system="Respond with ONLY a single JSON object, no prose, no markdown fences.",
-        messages=[{"role": "user", "content": prompt},
-                  {"role": "assistant", "content": "{"}],  # prefill → clean JSON
+        max_tokens=2048,
+        messages=[{"role": "user", "content": prompt}],
+        tools=[tool],
+        tool_choice={"type": "tool", "name": "submit_verdict"},
     )
-    text = "{" + "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+    if temperature and temperature > 0:
+        try:
+            msg = client.messages.create(temperature=temperature, **kwargs)
+        except anthropic.BadRequestError as e:
+            if "temperature" in str(e):
+                msg = client.messages.create(**kwargs)
+            else:
+                raise
+    else:
+        msg = client.messages.create(**kwargs)
+    for b in msg.content:
+        if getattr(b, "type", "") == "tool_use":
+            return dict(b.input)
+    # fallback: parse any text
+    text = "".join(getattr(b, "text", "") for b in msg.content)
     return _loads(text)
