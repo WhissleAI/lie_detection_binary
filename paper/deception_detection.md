@@ -198,6 +198,20 @@ over weak behavioural cues and anchoring the 50/50 base rate recalibrates it to
 deceptive, Claude leans truthful — so Claude's superb ranking (0.755) is masked
 by a conservative threshold (raw accuracy 0.62, ~0.70 thresholded).
 
+**Which intents predict deception?** Whissle's STT emits a probability over 33
+speech intents per clip; we also probe a focused deception-intent filter. We
+correlate each intent's probability with the label (point-biserial *r*, n = 121).
+A clear, interpretable pattern emerges (Figure 5): clips lean **deceptive** when
+their intent is **response, deny, disagree, agree, request, or suggest** — the
+reactive, denial-oriented register of someone fielding accusatory questions — and
+lean **truthful** when the intent is **reminisce or anecdote**, the genuine
+narrative recall of someone recounting events. The effect sizes are modest
+(|r| ≈ 0.2–0.28) but several are statistically significant (p < 0.05), and the
+direction matches the deception literature: deceivers deny and deflect, while
+truth-tellers supply detailed, first-hand narrative.
+
+![Which speech intents predict deception — point-biserial correlation of each intent's probability with the deceptive label; deceptive-leaning intents (deny, disagree, response) in red, truthful-leaning (reminisce, anecdote) in green; * marks p < 0.05.](/images/blog/intent_importance.png)
+
 ## Cost Analysis
 
 Because we never send the video, the LLM processes far fewer tokens. Measured with

@@ -22,3 +22,4 @@ data/
 
 # generated paper PDF (regenerate via marketing_post_agent)
 paper/*.pdf
+paper/figures/*.pdf
