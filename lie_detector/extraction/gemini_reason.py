@@ -142,6 +142,24 @@ def build_multimodal_summary(av: dict, audio: dict) -> str:
                  f"{sr.get('pause_count','?')} pauses ({sr.get('total_pause_sec','?')}s), "
                  f"filler_rate {sr.get('filler_rate','?')}\n")
 
+    # Focused deception-intent filter (richest new signal)
+    fi = av.get("filtered_intents") or []
+    if fi:
+        top = sorted([x for x in fi if isinstance(x, dict)],
+                     key=lambda x: -float(x.get("probability", 0)))[:6]
+        parts.append("DECEPTION-INTENT FILTER (Whissle, probability):")
+        parts.append("  " + ", ".join(f"{x['label'].lower()} {float(x.get('probability',0)):.2f}" for x in top) + "\n")
+
+    # Gateway speech-analysis: fluency / grammar / rhythm
+    sa = av.get("speech_analysis") or {}
+    if sa:
+        rh = sa.get("rhythm") or {}
+        parts.append("SPEECH ANALYSIS (Whissle):")
+        parts.append(f"  fluency {sa.get('fluency_score','?')}, grammar {sa.get('grammar_score','?')}, "
+                     f"vocab_range {sa.get('vocabulary_range','?')} | "
+                     f"speaking_ratio {rh.get('speaking_ratio','?')}, pause_rate {rh.get('pause_rate','?')}, "
+                     f"inter-word-interval {rh.get('iwi_mean_sec','?')}±{rh.get('iwi_std_sec','?')}s\n")
+
     parts.append("ACOUSTIC PROSODY:")
     parts.append(f"  pitch(F0) mean {aud.get('aud_f0_mean', aud.get('f0_mean','?'))}Hz, "
                  f"jitter {aud.get('f0_jitter','?')}, shimmer {aud.get('rms_shimmer','?')}")
