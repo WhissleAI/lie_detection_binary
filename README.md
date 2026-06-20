@@ -51,29 +51,34 @@ this project.
 ```
                     Real-life trial clip (.mp4)
                               │
-              ┌───────────────┴────────────────┐
-              ▼                                 ▼
-   Whissle gateway  POST /video/analyze     ffmpeg → 16k wav
-   (STT + audio-visual, fused)                   │
-              │                                  ▼
-   ┌──────────┴───────────┐              prosody (librosa)
-   ▼                      ▼                      │
- transcript+segments   visual_timeline           │
- (emotion/intent/...)  (face/pose/gaze/...)       │
-   │                      │                       │
-   ▼                      ▼                       ▼
- text_features        visual_features        audio_features
-   └──────────┬───────────┴───────────┬──────────┘
-              ▼                        ▼
-        multimodal feature matrix (one row / clip)
-              │
-              ▼
+        ┌─────────────────────┼──────────────────────┐
+        ▼                     ▼                       ▼
+ gateway /asr/transcribe  gateway /video/analyze  ffmpeg → 16k wav
+ (wav: transcript +       (mp4: visual_timeline)      │
+  metadata + pauses +          │                      ▼
+  word conf + probs)           │               prosody (librosa)
+        │                      │                      │
+        ▼                      ▼                      ▼
+   text_features          visual_features        audio_features
+   (lexical + STT          (gaze/pose/emotion/    (F0/jitter/pauses/
+    metadata probs)         blink/gestures)        voice quality)
+        └──────────┬───────────┴───────────┬─────────┘
+                   ▼                        ▼
+             multimodal feature matrix (one row / clip)
+                   │
+                   ▼
    Leave-One-Speaker-Out CV  →  LogReg / SVM / RandomForest / HistGBM
-              │
-              ▼
+                   │
+                   ▼
    metrics (acc / balanced-acc / AUC / F1) + per-modality ablations
    + permutation feature importance  →  best_model.joblib
 ```
+
+> Step 02 makes **two** gateway calls per clip: `/asr/transcribe` for the rich
+> text + metadata lane and `/video/analyze` for the visual timeline. (The video
+> endpoint also runs ASR internally, but its fuser only forwards a `segments`
+> field this model doesn't emit, so the metadata would be lost — hence the
+> dedicated `/asr/transcribe` call.) See [docs/GATEWAY.md](docs/GATEWAY.md).
 
 ---
 
@@ -146,25 +151,47 @@ data/
   models/best_model.joblib      refit best pipeline + metadata
 ```
 
-`05_train.py` prints a table like:
+`05_train.py` prints a table like (real run, 169 features, LOSO CV):
 
 ```
         model     modality  n_features  accuracy  balanced_accuracy  roc_auc    f1
-     hist_gbm          all         121     0.7xx              0.7xx    0.7xx  0.7xx
-       logreg   text+audio          76     0.6xx              ...
- majority_baseline      —            0     0.504              0.500      nan  0.671
+      svm_rbf         text         102     0.570              0.571    0.655 0.527
+      svm_rbf   text+audio         124     0.603              0.604    0.650 0.586
+     hist_gbm          all         169     0.603              0.604    0.615 0.556
+random_forest       visual          45     0.562              0.563    0.616 0.531
+majority_baseline      —             0     0.504              0.500    0.500 0.671
 ```
+
+Honest, speaker-independent numbers land around **AUC 0.62–0.66 / accuracy
+~0.60** — clearly above the 0.50 base rate but far from "solved" (and lower than
+papers that leak speaker identity via random splits). The **Whissle STT metadata
+probability** features (behavior/age/emotion distributions) and a few
+psycholinguistic rates (third-person, negation, neg-emotion) carry most of the
+signal; the visual lane adds a modest independent ~0.6 AUC on its own.
+
+> ⚠️ **Confound:** the model's audio **gender** read correlates with the label
+> (`corr ≈ −0.35`) because the deceptive set is dominated by a few female
+> speakers (Jodi Arias, Amanda Hayes, Crystal Mangum). So `meta_gender_*` /
+> `meta_age_*` partly encode *demographics, not deception*. See
+> [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md) — re-run with demographics dropped to
+> measure the genuine signal.
 
 ---
 
 ## Feature reference
 
-**Text (`txt_*`)** — psycholinguistic markers grounded in deception research
-(Newman & Pennebaker; Vrij): first-person-singular vs. plural pronoun rates,
-negations, tentative/certainty/cognitive/exclusive/motion word rates, negative−
-positive emotion, type-token ratio, disfluency. Plus Whissle STT metadata:
-audio-emotion distribution across segments, distinct intents, entity counts,
-word confidence, speaker count, words/second.
+**Text (`txt_*`)** — two groups:
+- *Psycholinguistic* markers (Newman & Pennebaker; Vrij): first-person-singular
+  vs. plural pronoun rates, negations, tentative/certainty/cognitive/exclusive/
+  motion word rates, negative−positive emotion, type-token ratio, disfluency.
+- *Whissle STT metadata* from `/asr/transcribe`: speech rate (WPM, articulation
+  rate, filler/pause ratios), pause statistics (count, mean/max duration,
+  long-pause fraction), per-word confidence + filler rates, overall ASR
+  confidence, uncertain-word rate, entity count, and the **full per-token
+  probability distributions** for every metadata category (`metaprob_<cat>_<tok>`
+  for emotion / age / gender / behavior / eval / role) plus each category's
+  entropy and an expected-age scalar — i.e. the model's soft read, not just the
+  top-1 label.
 
 **Visual (`vis_*`)** — aggregated over sampled frames where the speaker's face is
 detected: emotion fractions + intensities + entropy, **gaze aversion**, head-pose
@@ -214,6 +241,10 @@ docs/
 - **Deception detection is not solved.** No model here infers guilt; it predicts
   a dataset label derived from verdicts/exonerations. Do **not** deploy this to
   judge real people. Treat outputs as probabilistic and contestable.
+- **Demographic confound.** A handful of female defendants dominate the deceptive
+  class, so age/gender metadata correlate with the label. Some apparent
+  "accuracy" is demographics, not deception — audit by dropping `meta_*`/
+  `metaprob_age*`/`metaprob_gender*` and re-checking (see docs/NEXT_STEPS.md).
 - **Reproducibility.** Fixed seed, deterministic LOSO folds, resumable caches.
 - The bundled `Annotation/All_Gestures_*.csv` (human-annotated gestures) is a
   *reference baseline* from the original paper; we extract our own features and

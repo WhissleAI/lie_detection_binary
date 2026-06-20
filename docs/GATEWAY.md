@@ -9,15 +9,25 @@ a separate service that runs as a Docker container. This repo only *calls* it
 > Only the **audio prosody** lane (step 03, librosa) runs locally in this repo.
 > It needs `ffmpeg` on PATH and nothing else.
 
+Step 02 makes **two** calls per clip and merges them:
+
 ```
  this repo (lie_detection_binary)                Whissle gateway (Docker, :9000)
- ┌───────────────────────────────┐               ┌─────────────────────────────┐
- │ 02_extract_av.py              │  POST          │ /video/analyze              │
- │   extraction/gateway.py  ─────┼──────────────► │   ├─ Whissle ASR (+metadata)│
- │                               │  multipart     │   └─ MediaPipe vision lane  │
- │   parses JSON → features      │ ◄──────────────┤   → fused JSON              │
- └───────────────────────────────┘  fused result  └─────────────────────────────┘
+ ┌───────────────────────────────┐  POST wav      ┌─────────────────────────────┐
+ │ 02_extract_av.py              │ ─────────────► │ /asr/transcribe             │
+ │   extraction/gateway.py       │ ◄───────────── │   Whissle ASR + metadata    │
+ │                               │  rich JSON     │   (transcript, pauses,      │
+ │                               │                │    word conf, metadata_probs)│
+ │   merge → data/av/<clip>.json │  POST mp4      ├─────────────────────────────┤
+ │   parses → text + visual feats│ ─────────────► │ /video/analyze              │
+ │                               │ ◄───────────── │   MediaPipe vision lane     │
+ └───────────────────────────────┘  visual_timeline└─────────────────────────────┘
 ```
+
+Why two calls? `/video/analyze` runs ASR internally but its fuser only forwards a
+`segments` field that this ASR model doesn't emit — so the rich metadata
+(`metadata_probs`, `pauses`, `speech_rate`, per-word confidence) is lost. We get
+it from `/asr/transcribe`, and use `/video/analyze` purely for `visual_timeline`.
 
 ---
 
@@ -61,6 +71,19 @@ Authorization: Bearer wh_xxxxxxxxxxxxxxxx
 
 Create one at <https://lulu.whissle.ai/access> and put it in `.env` as
 `WHISSLE_API_TOKEN`. Without it the gateway returns `401`.
+
+**Local docker token.** The self-hosted gateway keeps its own SQLite token store
+(`/data/auth/tokens.db`). You can mint a valid `wh_` token without the cloud:
+
+```bash
+docker exec -w /app/agent whissle-gateway-liedetect \
+  python -c "from app.local_auth import create_token; \
+             print(create_token('liedetect','lie_detection_binary')['token'])"
+# -> wh_...  (paste into .env as WHISSLE_API_TOKEN)
+```
+
+Validate it: `curl -H "Authorization: Bearer wh_..." localhost:9000/video/health`
+should return `{"status":"ok",...}`.
 
 ---
 
@@ -140,14 +163,36 @@ re-run feature building / modelling without re-hitting the gateway.
 
 ---
 
-## Alternative endpoint: `POST /asr/transcribe` (STT only)
+## The text lane: `POST /asr/transcribe`
 
-If you ever want the transcript + metadata **without** the vision lane (faster),
-the gateway also exposes `/asr/transcribe` (multipart `file`, plus
-`metadata_prob`, `word_timestamps`, `language`, `hotwords`, `use_lm`,
-`speaker_embedding`, …). Returns `{transcript, metadata, word_timestamps, ...}`.
-This repo does not use it by default, but it's a drop-in if the vision lane is
-unavailable — wire it in `gateway.py` next to `analyze_video`.
+This is the **primary text/metadata source** (called for every clip alongside
+`/video/analyze`). Multipart `file` (wav) + form fields `metadata_prob=true`,
+`word_timestamps=true`, `use_lm=true`, `language`. The response is rich:
+
+```jsonc
+{
+  "transcript": "no sir i did not ...",
+  "confidence": 0.8948,                       // overall ASR confidence
+  "words": [ {"word":"no","start":0.46,"end":0.58,"confidence":0.999,"filler":false}, ... ],
+  "pauses": [ {"start":0.578,"end":0.738,"duration":0.16,"type":"short"}, ... ],
+  "speech_rate": { "words_per_minute":145, "articulation_rate_wpm":270.6,
+                   "word_count":41, "duration_sec":16.96, "spoken_sec":9.09,
+                   "pause_count":29, "total_pause_sec":7.87, "filler_rate":0.0 },
+  "uncertain_words": [],
+  "entities": [],
+  "metadata": { "emotion":"EMOTION_HAPPY","age":"AGE_30_45","gender":"GENDER_MALE",
+                "behavior":"BEHAVIOR_FILLER","role":"ROLE_INTERVIEWEE", ... },
+  "metadata_probs": {                          // FULL soft distributions, used as features
+     "emotion":[ {"token":"EMOTION_HAPPY","probability":0.563},
+                 {"token":"EMOTION_SAD","probability":0.364}, ... ],
+     "age":[...], "gender":[...], "behavior":[...], "eval":[...], "role":[...] },
+  "model": "en-in-tech-misc"
+}
+```
+
+`features/text_features.py` turns every `metadata_probs` token into a
+`metaprob_<cat>_<token>` feature (not just the top-1 label), plus per-category
+entropy, the speech-rate / pause / word-confidence stats, and the lexical rates.
 
 ---
 

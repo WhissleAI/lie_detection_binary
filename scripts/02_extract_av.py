@@ -27,7 +27,7 @@ from pathlib import Path
 from lie_detector.config import CFG
 from lie_detector.dataset import load_manifest
 from lie_detector.io_utils import write_json
-from lie_detector.extraction.gateway import analyze_video, health
+from lie_detector.extraction.gateway import extract_clip, health
 
 
 def _bootstrap_record(clip_id: str, label: str) -> dict:
@@ -39,8 +39,8 @@ def _bootstrap_record(clip_id: str, label: str) -> dict:
     return {
         "clip_id": clip_id,
         "text": transcript,
-        "segments": [{"speaker": "SPEAKER_00", "text": transcript, "start": 0, "end": 0,
-                      "metadata": {}, "entities": [], "words": []}] if transcript else [],
+        "metadata": {}, "metadata_probs": {}, "entities": [], "words": [],
+        "pauses": [], "speech_rate": {}, "confidence": None, "uncertain_words": [],
         "visual_timeline": [],
         "semantic_samples": [],
         "backend": "dataset_bootstrap",
@@ -81,12 +81,14 @@ def main() -> None:
                 ok += 1
                 print(f"  [{ok+fail:>3}] {clip_id}  ✓ (bootstrap)")
             else:
-                rec = analyze_video(Path(row["video_path"]), clip_id, CFG)
+                rec = extract_clip(Path(row["video_path"]), clip_id, CFG)
                 ok += 1
-                nseg = len(rec.get("segments", []))
+                nwords = len(rec.get("words", []))
                 nframe = len(rec.get("visual_timeline", []))
-                print(f"  [{ok+fail:>3}] {clip_id}  ✓  segments={nseg} frames={nframe} "
-                      f"{rec.get('processing_time','')}")
+                wf = sum(1 for f in rec["visual_timeline"] if f.get("faces"))
+                emo = (rec.get("metadata") or {}).get("emotion", "?")
+                print(f"  [{ok+fail:>3}] {clip_id}  ✓  words={nwords} frames={nframe} "
+                      f"(faces={wf}) emo={emo}")
         except Exception as e:
             fail += 1
             print(f"  [{ok+fail:>3}] {clip_id}  ✗  {type(e).__name__}: {str(e)[:200]}")

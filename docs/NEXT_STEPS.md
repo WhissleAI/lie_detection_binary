@@ -17,23 +17,31 @@ external Whissle gateway dependency).
   permutation importance, model persistence.
 - Smoke tests (`tests/test_smoke.py`), all green.
 
-**Baseline numbers (offline `--bootstrap`: bundled transcripts + prosody, no
-gateway visual yet):** best LOSO model ≈ RandomForest on text, **acc ≈ 0.63,
-AUC ≈ 0.67**. These are the text+audio floor; the visual lane is empty in
-bootstrap.
+**Baseline numbers (real gateway run, 169 features, LOSO CV):** best ≈ SVM-RBF on
+text, **AUC ≈ 0.655 / acc ≈ 0.57**; text+audio AUC ≈ 0.650 / acc ≈ 0.60;
+visual-only RandomForest AUC ≈ 0.616. Top features are the Whissle STT
+**metadata-probability** distributions (behavior/age/emotion) plus a few
+psycholinguistic rates (third-person, negation, neg-emotion) and pause count.
+Honest speaker-independent performance is clearly above the 0.50 base rate but
+modest — and fusion doesn't beat text alone yet (169 features on 121 clips
+overfits; needs feature selection / regularisation).
 
-**The immediate to-do:** run the **real** gateway pass to populate the visual
-lane and the metadata-rich transcripts:
-
+Re-run any time with:
 ```bash
-# 1) gateway running + token in .env (see docs/GATEWAY.md)
-python scripts/02_extract_av.py --overwrite     # real STT + visual, all 121 clips
+python scripts/02_extract_av.py        # resumes; --overwrite to refetch
 python scripts/04_build_features.py
-python scripts/05_train.py                       # the real tri-modal LOSO numbers
+python scripts/05_train.py
 ```
+See per-modality ablation rows in `data/reports/cv_results.csv`.
 
-Then compare the per-modality ablation rows in `data/reports/cv_results.csv` to
-see how much the visual + STT-metadata lanes add over text alone.
+**⚠️ Priority confound to fix first.** The model's audio **gender** read
+correlates with the label (`corr ≈ −0.35`) because a few female defendants
+(Jodi Arias, Amanda Hayes, Crystal Mangum) dominate the deceptive class. So
+`meta_age_*` / `metaprob_gender_*` / `metaprob_age_*` partly encode demographics,
+not deception. **Action:** add a `--no-demographics` switch to
+`feature_columns` (drop those columns) and report AUC with/without — that gap is
+how much "accuracy" was really demographic leakage. Only the demographics-free
+number is a fair deception signal.
 
 ## Ideas to push the research further
 

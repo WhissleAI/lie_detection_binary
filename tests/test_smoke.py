@@ -33,14 +33,31 @@ def test_readme_speaker_parsing():
 
 
 def test_text_features_keys():
-    rec = {"text": "I did not. I absolutely did not, sir.",
-           "segments": [{"text": "I did not.", "metadata": {"emotion": "neutral"},
-                         "words": [{"word": "I", "start": 0.0, "end": 0.1, "confidence": 0.9}]}]}
+    # mirrors the gateway /asr/transcribe record shape
+    rec = {
+        "text": "I did not. I absolutely did not, sir.",
+        "metadata": {"emotion": "EMOTION_HAPPY", "gender": "GENDER_MALE", "age": "AGE_30_45"},
+        "metadata_probs": {"emotion": [{"token": "EMOTION_HAPPY", "probability": 0.6},
+                                       {"token": "EMOTION_NEUTRAL", "probability": 0.4}]},
+        "speech_rate": {"words_per_minute": 120.0, "duration_sec": 4.0, "spoken_sec": 3.0,
+                        "total_pause_sec": 1.0, "filler_rate": 0.0, "pause_count": 2},
+        "pauses": [{"duration": 0.2}, {"duration": 0.7}],
+        "words": [{"word": "i", "confidence": 0.99, "filler": False},
+                  {"word": "did", "confidence": 0.4, "filler": False}],
+        "confidence": 0.88, "uncertain_words": [], "entities": [],
+    }
     f = text_features(rec)
     for k in ("word_count", "rate_i_singular", "type_token_ratio",
-              "audio_emo_frac_neutral", "words_per_second"):
-        assert k in f
+              "sr_wpm", "pause_long_frac", "word_conf_mean", "asr_confidence",
+              "metaprob_emotion_happy", "metaprob_emotion_entropy"):
+        assert k in f, k
     assert f["word_count"] > 0
+    # full distribution (not just top-1): the probability is carried through
+    assert abs(f["metaprob_emotion_happy"] - 0.6) < 1e-9
+    assert abs(f["metaprob_emotion_neutral"] - 0.4) < 1e-9
+    assert f["metaprob_emotion_entropy"] > 0.0
+    assert f["sr_wpm"] == 120.0
+    assert 0.0 < f["low_conf_word_rate"] <= 1.0  # the 0.4-confidence word
 
 
 def test_visual_features_empty_and_populated():

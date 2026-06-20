@@ -18,53 +18,64 @@ import pandas as pd
 from ..config import CFG
 from ..dataset import load_manifest
 from ..io_utils import read_json
-from .text_features import text_features
+from .text_features import text_features, collect_metadata_vocab
 from .visual_features import visual_features
 from .audio_features import audio_features
 
-# text + visual both come from the single fused gateway record (data/av/<clip>.json);
-# audio prosody is a complementary local librosa step (data/audio/<clip>.json).
-_BUILDERS = {
-    "txt": ("av_dir", text_features),
-    "vis": ("av_dir", visual_features),
-    "aud": ("audio_dir", audio_features),
-}
 
-
-def _load_modality(clip_id: str, dir_attr: str, builder, prefix: str, cfg) -> dict:
-    path = getattr(cfg, dir_attr) / f"{clip_id}.json"
-    if not path.exists():
-        return {f"{prefix}_present": 0.0}
-    try:
-        rec = read_json(path)
-        feats = builder(rec)
-        out = {f"{prefix}_{k}": v for k, v in feats.items()}
-        out[f"{prefix}_present"] = 1.0
-        return out
-    except Exception as e:  # bad json shouldn't sink the whole matrix
-        return {f"{prefix}_present": 0.0, f"{prefix}_error": str(e)[:80]}
+def _prefixed(prefix: str, feats: dict) -> dict:
+    out = {f"{prefix}_{k}": v for k, v in feats.items()}
+    out[f"{prefix}_present"] = 1.0
+    return out
 
 
 def build_feature_matrix(cfg=CFG) -> pd.DataFrame:
+    """One row per clip.
+
+    Text + visual both come from the gateway record (``data/av/<clip>.json``);
+    audio prosody is the complementary local librosa step. The metadata
+    probability vocabulary is collected once across all clips so the per-token
+    ``txt_metaprob_*`` columns are consistent across the matrix.
+    """
     manifest = load_manifest(cfg)
+
+    # Pre-load all gateway records once (used for both txt + vis, and for vocab).
+    av: dict[str, dict] = {}
+    for clip_id in manifest["clip_id"]:
+        p = cfg.av_dir / f"{clip_id}.json"
+        if p.exists():
+            try:
+                av[clip_id] = read_json(p)
+            except Exception:
+                pass
+    meta_vocab = collect_metadata_vocab(av.values())
+
     rows = []
     for _, m in manifest.iterrows():
         clip_id = m["clip_id"]
-        row = {
-            "clip_id": clip_id,
-            "label": m["label"],
-            "y": int(m["y"]),
-            "speaker": m["speaker"],
-            "role": m.get("role", ""),
-        }
-        for prefix, (dir_attr, builder) in _BUILDERS.items():
-            row.update(_load_modality(clip_id, dir_attr, builder, prefix, cfg))
+        row = {"clip_id": clip_id, "label": m["label"], "y": int(m["y"]),
+               "speaker": m["speaker"], "role": m.get("role", "")}
+
+        rec = av.get(clip_id)
+        if rec is not None:
+            row.update(_prefixed("txt", text_features(rec, meta_vocab)))
+            row.update(_prefixed("vis", visual_features(rec)))
+        else:
+            row["txt_present"] = 0.0
+            row["vis_present"] = 0.0
+
+        ap = cfg.audio_dir / f"{clip_id}.json"
+        if ap.exists():
+            try:
+                row.update(_prefixed("aud", audio_features(read_json(ap))))
+            except Exception:
+                row["aud_present"] = 0.0
+        else:
+            row["aud_present"] = 0.0
+
         rows.append(row)
 
-    df = pd.DataFrame(rows)
-    # Drop stray error columns from the numeric matrix (keep only meta + numerics).
-    err_cols = [c for c in df.columns if c.endswith("_error")]
-    return df.drop(columns=err_cols)
+    return pd.DataFrame(rows)
 
 
 def feature_columns(df: pd.DataFrame, modalities=("txt", "vis", "aud")) -> list[str]:
