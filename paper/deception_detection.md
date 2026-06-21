@@ -6,13 +6,11 @@
 
 Frontier multimodal models can guess whether a person is lying from a video of their testimony. They do so only by streaming that person's raw face and voice to a third-party model. We ask whether the heavy media is necessary at all. On the *Real-life Trial Deception* dataset (121 courtroom clips), Whissle's on-device speech and vision stack extracts a compact feature digest: transcript, emotion, age, gender, and intent distributions, a deception-intent filter, fluency and rhythm analysis, per-frame facial behaviour, and prosody — roughly 250 numbers per clip. Under speaker-independent evaluation, we report three findings. A small classifier on this digest reaches **AUC 0.741**, matching Gemini 2.5 Pro on the full video (0.749). Handing the same digest to a frontier LLM reaches **AUC 0.755 with Claude Opus 4.8** at **7.8× fewer input tokens**, with no media leaving the device. The reported 75% accuracy is an artefact of speaker-identity leakage. We release code and experiments.
 
-[FIGURE 1: a real-world courtroom testimony scene (a witness/defendant at the
-stand) — sets the deception-detection context. Licensed stock or illustrative
-render; design team to source.]
-
 ## Introduction
 
 When a witness takes the stand, every pause, glance, and word choice is scrutinised for signs of deception. Automating that judgement is an old dream and a fraught one. The polygraph is unreliable and easily countered. Human observers barely beat chance [1]. The recent leap in multimodal large language models (LLMs) has revived the dream. Give a model the video, ask "is this person lying?", and it does meaningfully better than chance [6].
+
+![Our thesis in one picture. A witness's testimony is distilled on-device into a compact feature digest — a few numbers, prosody, and facial behaviour — held behind a privacy shield. Only that digest, never the raw face and voice, reaches a cloud model. This paper asks how much deception signal survives that compression.](/images/blog/fig_intro.png)
 
 This convenience hides a serious cost. Sending the raw video of a defendant, a patient, or a customer exposes their face and voice to a third party. Video is token-heavy, so the request is expensive. The verdict is opaque and hard to contest. In legal, clinical, and enterprise settings, "upload the suspect's video" is a non-starter.
 
