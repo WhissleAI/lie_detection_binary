@@ -6,6 +6,7 @@
 \usepackage{newtxtext,newtxmath}   % clean Times-like body (arXiv-standard)
 \usepackage{booktabs}
 \usepackage{graphicx}
+\usepackage{float}                 % [H] places tables/figures exactly inline
 \usepackage{microtype}
 \usepackage{xcolor}
 \definecolor{whisslegreen}{HTML}{124E3F}
@@ -53,7 +54,7 @@ Frontier multimodal models can guess whether a person is lying from a testimony 
 
 When a witness takes the stand, every pause, glance, and word is scrutinised for deception. Automating that judgement is an old and fraught dream. The polygraph is unreliable and easily countered. Human observers barely beat chance \cite{ref1}. Multimodal large language models (LLMs) have revived the dream. Give a model the video, ask "is this person lying?", and it does meaningfully better than chance \cite{ref6}.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{/Users/karan/Desktop/work/whissle/live_assist/lie_detection_binary/paper/figures/fig_intro.png}
 \caption{On-device, a testimony becomes a compact digest behind a privacy shield; only that digest reaches the cloud.}
@@ -86,7 +87,7 @@ The \emph{Real-life Trial Deception} dataset has \textbf{121 clips} (61 deceptiv
 
 \textbf{The speaker-leakage trap.} But it has only \textbf{33 speakers}: one defendant supplies \textbf{32 clips}, and \textbf{7 appear in both classes}. Under the original leave-one-\emph{video}-out split, holding out one such clip still leaves 31 of the same person in training --- so a model learns \emph{who} is speaking, not \emph{whether they lie}. We instead use \textbf{leave-one-speaker-out (LOSO)}, holding out all of a person's clips together. It scores lower, but it is the only protocol that measures generalisation to a new individual.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{/Users/karan/Desktop/work/whissle/live_assist/lie_detection_binary/paper/figures/fig_dataset.png}
 \caption{Balanced 61/60 classes, but one defendant supplies 32 of 121 clips --- the source of speaker leakage.}
@@ -104,7 +105,7 @@ Three on-device lanes convert each clip into a feature digest. No raw media leav
 
 This yields \textasciitilde{}250 interpretable features per clip. We study four configurations along two axes (Table~\ref{tab:setup}):
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \begin{tabular}{lll}
 \toprule
@@ -118,7 +119,7 @@ This yields \textasciitilde{}250 interpretable features per clip. We study four 
 \label{tab:setup}
 \end{table}
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{/Users/karan/Desktop/work/whissle/live_assist/lie_detection_binary/paper/figures/fig_pipeline.png}
 \caption{Three local lanes build a \textasciitilde{}250-number digest; a classifier or LLM-as-judge predicts deception. Video never leaves the device.}
@@ -130,7 +131,7 @@ This yields \textasciitilde{}250 interpretable features per clip. We study four 
 
 \textbf{Main results.} Table~\ref{tab:results} reports every system.
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \begin{tabular}{llllll}
 \toprule
@@ -152,7 +153,7 @@ Two independent roads reach \textasciitilde{}0.75 without exposing video. Train 
 
 \textbf{Comparison to the literature.} Under the paper's own leave-one-video-out protocol, our features reproduce and exceed its numbers (0.752--0.777 vs. 0.752; Table~\ref{tab:protocol}). Under honest LOSO, everything drops by the size of the leakage.
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \begin{tabular}{lll}
 \toprule
@@ -166,13 +167,13 @@ Leave-one-speaker-out (honest) & not reported & 0.741 \\
 \label{tab:protocol}
 \end{table}
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{/Users/karan/Desktop/work/whissle/live_assist/lie_detection_binary/paper/figures/fig_leakage.png}
 \caption{Accuracy under leave-one-video-out (red) versus honest LOSO (green); the gap is the leakage inflation.}
 \end{figure}
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{/Users/karan/Desktop/work/whissle/live_assist/lie_detection_binary/paper/figures/fig_results.png}
 \caption{Honest LOSO ROC-AUC for six systems. The best --- Claude Opus 4.8 over our digest (0.755) --- sends no video.}
@@ -182,7 +183,7 @@ Leave-one-speaker-out (honest) & not reported & 0.741 \\
 
 \textbf{Feature groups.} We partition the digest into seven groups and measure each alone, plus the AUC lost when it is removed (Table~\ref{tab:ablation}; LOSO, full set = 0.741):
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \begin{tabular}{llll}
 \toprule
@@ -211,7 +212,7 @@ The STT-metadata group is strongest alone, but \textbf{the visual lane is the mo
 
 \textbf{Which intents predict deception?} Whissle's STT emits a probability over 33 speech intents per clip, which we probe alongside the deception-intent filter. We correlate each intent's probability with the label (point-biserial \emph{r}, n = 121), and a clear pattern emerges (Figure 5). Clips lean \textbf{deceptive} when their intent is \textbf{response, deny, disagree, agree, request, or suggest} --- the reactive, denial-oriented register of someone fielding accusatory questions. They lean \textbf{truthful} when the intent is \textbf{reminisce or anecdote}, the genuine narrative recall of someone recounting events. We are deliberately cautious. Effect sizes are small (|r| $\le$ 0.28). Although 10 of 113 intents reach uncorrected p < 0.05 (vs. \textasciitilde{}6 expected by chance), \emph{none survive} multiple-comparison correction. No single intent is a standalone lie detector. What is meaningful is, first, the \textbf{coherent, theory-aligned direction} --- random noise would not place denial and deflection on the deceptive side and genuine recollection on the truthful side --- and second, that intents are the \textbf{single strongest feature family} in the ablation (Table~\ref{tab:ablation}). The signal lives in the \emph{distribution} of speech acts, not in any one; confirming individual intents needs a larger corpus.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{/Users/karan/Desktop/work/whissle/live_assist/lie_detection_binary/paper/figures/intent_importance.png}
 \caption{Point-biserial correlation of each intent with the deceptive label; deny/disagree/response lean deceptive (red), reminisce/anecdote truthful (green). * marks p < 0.05.}
@@ -221,7 +222,7 @@ The STT-metadata group is strongest alone, but \textbf{the visual lane is the mo
 
 Because we never send the video, the LLM processes far fewer tokens. We measure this with the provider's \texttt{count\_tokens} API over a sample of clips (Table~\ref{tab:cost}):
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \begin{tabular}{lll}
 \toprule
