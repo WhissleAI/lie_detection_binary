@@ -20,6 +20,7 @@ data/
 # pytest
 .pytest_cache/
 
-# generated paper PDF (regenerate via marketing_post_agent)
+# generated paper PDFs (regenerate via marketing_post_agent) — but keep the final paper
 paper/*.pdf
 paper/figures/*.pdf
+!paper/deception_detection.pdf
