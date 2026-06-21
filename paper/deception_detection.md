@@ -205,10 +205,15 @@ A clear, interpretable pattern emerges (Figure 5): clips lean **deceptive** when
 their intent is **response, deny, disagree, agree, request, or suggest** — the
 reactive, denial-oriented register of someone fielding accusatory questions — and
 lean **truthful** when the intent is **reminisce or anecdote**, the genuine
-narrative recall of someone recounting events. The effect sizes are modest
-(|r| ≈ 0.2–0.28) but several are statistically significant (p < 0.05), and the
-direction matches the deception literature: deceivers deny and deflect, while
-truth-tellers supply detailed, first-hand narrative.
+narrative recall of someone recounting events. We are deliberately cautious here:
+effect sizes are small (|r| ≤ 0.28), and although 10 of 113 intents reach
+uncorrected p < 0.05 (vs. ~6 expected by chance), *none survive* multiple-
+comparison correction. No single intent is a standalone lie detector. What is
+meaningful is (a) the **coherent, theory-aligned direction** — random noise would
+not place denial/deflection on the deceptive side and genuine recollection on the
+truthful side — and (b) that intents are the **single strongest feature family**
+in the model ablation (Table 4). The signal lives in the *distribution* of speech
+acts, not any one of them; confirming individual intents needs a larger corpus.
 
 ![Which speech intents predict deception — point-biserial correlation of each intent's probability with the deceptive label; deceptive-leaning intents (deny, disagree, response) in red, truthful-leaning (reminisce, anecdote) in green; * marks p < 0.05.](/images/blog/intent_importance.png)
 
