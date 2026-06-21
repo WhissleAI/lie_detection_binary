@@ -53,12 +53,13 @@ Three on-device lanes convert each clip into a feature digest. No raw media leav
 
 **Acoustic lane (prosody).** Pitch (F0), jitter/shimmer, and pause statistics.
 
-This yields ~250 interpretable features per clip. We then study four configurations along two axes:
+This yields ~250 interpretable features per clip. We study four configurations along two axes ([#setup]):
 
 | | No LLM | With LLM |
 |---|---|---|
 | **Zero-shot** | majority baseline | LLM-as-judge over our digest (text-only); LLM over raw video |
 | **Trained** | gradient-boosting on the digest | trained late-fusion of digest model + LLM |
+Table: {#setup} The four system configurations, compared along two axes.
 
 ![Three local lanes build a ~250-number digest; a classifier or LLM-as-judge predicts deception. Video never leaves the device.](/images/blog/fig_pipeline.png)
 
@@ -66,7 +67,7 @@ This yields ~250 interpretable features per clip. We then study four configurati
 
 **Setup.** All numbers are leave-one-speaker-out, pooled out-of-fold over 121 clips. The trained model is gradient-boosted trees. The LLM judges are zero-shot, prompted neutrally with a base-rate anchor that weights verbal content over weak behavioural cues.
 
-**Main results.**
+**Main results.** [#results] reports every system.
 
 | System | Trained? | LLM? | Video sent? | Accuracy | ROC-AUC |
 |---|:--:|:--:|:--:|--:|--:|
@@ -76,15 +77,17 @@ This yields ~250 interpretable features per clip. We then study four configurati
 | LLM judges our features — Gemini 2.5 Pro | No | Yes | No | 0.669 | 0.704 |
 | LLM watches raw video — Gemini 2.5 Pro | No | Yes | Yes | 0.669 | 0.749 |
 | Self-hosted + LLM (trained late fusion) | Yes | Yes | Yes | 0.678 | 0.752 |
+Table: {#results} Honest leave-one-speaker-out performance of every system.
 
 Two independent roads reach ~0.75 without exposing video. Train a small model on the digest (0.741), or hand the digest to a frontier LLM (0.704–0.755). The best single result — **Claude Opus 4.8 over our digest, 0.755** — exceeds the same model class watching raw video (0.749).
 
-**Comparison to the literature.** Under the paper's own leave-one-video-out protocol, our features reproduce and exceed its numbers (0.752–0.777 vs. 0.752). Under honest LOSO, everything drops by the size of the leakage.
+**Comparison to the literature.** Under the paper's own leave-one-video-out protocol, our features reproduce and exceed its numbers (0.752–0.777 vs. 0.752; [#protocol]). Under honest LOSO, everything drops by the size of the leakage.
 
 | Protocol | Original paper | Our features |
 |---|--:|--:|
 | Leave-one-video-out (speaker-leaky) | 0.752 | 0.752–0.777 |
 | Leave-one-speaker-out (honest) | not reported | 0.741 |
+Table: {#protocol} Our features under both cross-validation protocols.
 
 ![Accuracy under leave-one-video-out (red) versus honest LOSO (green); the gap is the leakage inflation.](/images/blog/fig_leakage.png)
 
@@ -92,7 +95,7 @@ Two independent roads reach ~0.75 without exposing video. Train a small model on
 
 ## Ablation Studies
 
-**Feature groups.** We partition the digest into seven groups and measure each alone, plus the AUC lost when it is removed (LOSO, full set = 0.741):
+**Feature groups.** We partition the digest into seven groups and measure each alone, plus the AUC lost when it is removed ([#ablation]; LOSO, full set = 0.741):
 
 | Group | # feats | Alone AUC | Marginal Δ (drop) |
 |---|--:|--:|--:|
@@ -103,6 +106,7 @@ Two independent roads reach ~0.75 without exposing video. Train a small model on
 | Lexical (psycholinguistic) | 22 | 0.564 | +0.022 |
 | Deception-intent filter | 15 | 0.518 | +0.023 |
 | Speech structure (rate/pauses/conf) | 20 | 0.490 | −0.008 |
+Table: {#ablation} Each feature group alone, and the AUC lost when it is removed.
 
 The STT-metadata group is strongest alone, but **the visual lane is the most complementary**. Removing it costs 0.133 AUC despite its modest solo score, because it adds signal no other lane captures.
 
@@ -112,18 +116,19 @@ The STT-metadata group is strongest alone, but **the visual lane is the most com
 
 **Prompt sensitivity of the LLM judge.** A naive "forensic" prompt makes Gemini over-call deception (AUC 0.62, 79% deceptive calls). Emphasising verbal content over weak behavioural cues, and anchoring the 50/50 base rate, recalibrates it to 0.704 at a 54% deceptive rate. The two LLMs carry opposite priors. Gemini leans deceptive, Claude leans truthful. Claude's strong ranking (0.755) is therefore masked by a conservative threshold (raw accuracy 0.62, ~0.70 thresholded).
 
-**Which intents predict deception?** Whissle's STT emits a probability over 33 speech intents per clip, which we probe alongside the deception-intent filter. We correlate each intent's probability with the label (point-biserial *r*, n = 121), and a clear pattern emerges (Figure 5). Clips lean **deceptive** when their intent is **response, deny, disagree, agree, request, or suggest** — the reactive, denial-oriented register of someone fielding accusatory questions. They lean **truthful** when the intent is **reminisce or anecdote**, the genuine narrative recall of someone recounting events. We are deliberately cautious. Effect sizes are small (|r| ≤ 0.28). Although 10 of 113 intents reach uncorrected p < 0.05 (vs. ~6 expected by chance), *none survive* multiple-comparison correction. No single intent is a standalone lie detector. What is meaningful is, first, the **coherent, theory-aligned direction** — random noise would not place denial and deflection on the deceptive side and genuine recollection on the truthful side — and second, that intents are the **single strongest feature family** in the ablation (Table 4). The signal lives in the *distribution* of speech acts, not in any one; confirming individual intents needs a larger corpus.
+**Which intents predict deception?** Whissle's STT emits a probability over 33 speech intents per clip, which we probe alongside the deception-intent filter. We correlate each intent's probability with the label (point-biserial *r*, n = 121), and a clear pattern emerges (Figure 5). Clips lean **deceptive** when their intent is **response, deny, disagree, agree, request, or suggest** — the reactive, denial-oriented register of someone fielding accusatory questions. They lean **truthful** when the intent is **reminisce or anecdote**, the genuine narrative recall of someone recounting events. We are deliberately cautious. Effect sizes are small (|r| ≤ 0.28). Although 10 of 113 intents reach uncorrected p < 0.05 (vs. ~6 expected by chance), *none survive* multiple-comparison correction. No single intent is a standalone lie detector. What is meaningful is, first, the **coherent, theory-aligned direction** — random noise would not place denial and deflection on the deceptive side and genuine recollection on the truthful side — and second, that intents are the **single strongest feature family** in the ablation ([#ablation]). The signal lives in the *distribution* of speech acts, not in any one; confirming individual intents needs a larger corpus.
 
 ![Point-biserial correlation of each intent with the deceptive label; deny/disagree/response lean deceptive (red), reminisce/anecdote truthful (green). * marks p < 0.05.](/images/blog/intent_importance.png)
 
 ## Cost Analysis
 
-Because we never send the video, the LLM processes far fewer tokens. We measure this with the provider's `count_tokens` API over a sample of clips:
+Because we never send the video, the LLM processes far fewer tokens. We measure this with the provider's `count_tokens` API over a sample of clips ([#cost]):
 
 | Input to the LLM | Mean input tokens | Relative |
 |---|--:|--:|
 | Raw video (≈296 tokens/s) | 9,810 | 1.0× |
 | Our feature digest | 1,261 | **0.13× (7.8× fewer)** |
+Table: {#cost} Mean input tokens per clip: raw video vs. our digest.
 
 At Gemini 2.5 Pro list pricing, this is ~$1.58 vs. ~$12.26 per 1,000 clips, an **~87% input-cost reduction**. It also lowers latency, with no video decode or transfer, and, as shown, raises accuracy. Longer clips save more — up to 10.7× on a 55 s clip.
 
