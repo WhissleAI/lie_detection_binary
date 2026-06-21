@@ -1,4 +1,4 @@
-# Catching Lies Without Watching: Privacy-Preserving Multimodal Deception Detection
+# Catching Lies Without Sending the Video: Privacy-Preserving Multimodal Deception Detection
 
 **Whissle Research Team**
 
