@@ -1,6 +1,6 @@
 # Catching Lies Without Sending the Video: Privacy-Preserving Multimodal Deception Detection
 
-**Whissle Research Team**
+**Nikita Shar, Pranav Saran, Karan Singla**
 
 ## Abstract
 
