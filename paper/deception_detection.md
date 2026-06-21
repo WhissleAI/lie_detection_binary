@@ -1,12 +1,10 @@
 # Catching Lies Without Sending the Video: Privacy-Preserving Multimodal Deception Detection
 
-**Nikita Shar, Pranav Saran, Karan Singla**
+**Nikita Sharma, Pranav Saran, Karan Singla**
 
 ## Abstract
 
-Frontier multimodal models can guess whether a person is lying from a testimony video. To do so, they stream that person's raw face and voice to a third-party model. We ask whether the heavy media is needed at all. On the *Real-life Trial Deception* dataset (121 courtroom clips), Whissle's on-device speech and vision stack extracts a compact digest: transcript, emotion, age, gender, intent distributions, a deception-intent filter, fluency and rhythm, per-frame facial behaviour, and prosody — about 250 numbers per clip. Under speaker-independent evaluation, we report three findings. A small classifier on this digest reaches **AUC 0.741**, matching Gemini 2.5 Pro on full video (0.749). Handing the digest to a frontier LLM reaches **AUC 0.755 with Claude Opus 4.8** at **7.8× fewer input tokens**, with no media leaving the device. The reported 75% accuracy is a speaker-leakage artefact. We release code and experiments.
-
-**Code & data:** [github.com/WhissleAI/lie_detection_binary](https://github.com/WhissleAI/lie_detection_binary)
+Frontier multimodal models can guess whether a person is lying from a testimony video. To do so, they stream that raw face and voice to a third-party model. We ask whether the heavy media is needed at all. On the *Real-life Trial Deception* dataset, Whissle's on-device speech and vision stack extracts a compact digest: transcript, emotion, age, gender, intent distributions, a deception-intent filter, fluency and rhythm, per-frame facial behaviour, and prosody. Under speaker-independent evaluation, we report three findings. A small classifier on this digest reaches **AUC 0.741**, matching Gemini 2.5 Pro on full video. Handing the digest to a frontier LLM reaches **AUC 0.755 with Claude Opus 4.8** at **7.8× fewer input tokens**, with no media leaving the device. The reported 75% accuracy is a speaker-leakage artefact. We release code and experiments.^[https://github.com/WhissleAI/lie_detection_binary]
 
 ## Introduction
 
