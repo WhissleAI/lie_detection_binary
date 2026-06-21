@@ -24,3 +24,4 @@ data/
 paper/*.pdf
 paper/figures/*.pdf
 !paper/deception_detection.pdf
+paper/arxiv/
