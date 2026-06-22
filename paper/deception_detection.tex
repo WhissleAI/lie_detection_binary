@@ -216,6 +216,42 @@ The STT-metadata group is strongest alone, but \textbf{the visual lane is the mo
 \caption{Point-biserial correlation of each intent with the deceptive label; deny/disagree/response lean deceptive (red), reminisce/anecdote truthful (green). * marks p < 0.05.}
 \end{figure}
 
+\section{What the Model Relies On}
+
+To see \emph{how} the classifier decides, not just how well, we compute SHAP attributions over the trained model and cross-check each signal against leave-one-speaker-out (Table~\ref{tab:interp}).
+
+\textbf{No single cue is a detector.} Of 268 features, only 14 survive Benjamini--Hochberg correction (strongest point-biserial |r| = 0.39), and the best single feature reaches LOSO-AUC 0.656 versus the model's 0.741. The accuracy is the \emph{integration} of many individually weak cues.
+
+\textbf{Behaviour, not words, carries the signal --- and it generalises.} Visual features account for \textbf{41\%} of attribution and cost the most when removed ($-$0.133 AUC); lexical, prosodic, and intent features contribute less, and intents barely generalise ($-$0.004).
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\toprule
+feature family & SHAP attribution & LOSO-AUC $\Delta$ if removed \\
+\midrule
+visual & 41\% & $-$0.133 \\
+demographic (age/gender) & 14\% & $-$0.063 \\
+lexical / structure & 12\% & +0.015 \\
+prosody & 11\% & $-$0.028 \\
+speech-analysis & 7\% & $-$0.028 \\
+intent probabilities & 7\% & $-$0.004 \\
+deception-intent filter & 6\% & $-$0.023 \\
+emotion probabilities & 3\% & $-$0.013 \\
+\bottomrule
+\end{tabular}
+\caption{Where the model's decisions come from, and how much each family generalises.}
+\label{tab:interp}
+\end{table}
+
+\textbf{A demographic confound, visible per decision.} 14\% of attribution is the speech model's age/gender predictions; dropping them lowers honest AUC to \textbf{0.679} (our bulletproof number). SHAP shows this is not benign. For a correctly-classified \emph{truthful} clip, the single largest factor in the verdict was the model's guess that the speaker was aged 30--45 --- it inferred honesty partly from demographics, not behaviour. A deceptive clip, by contrast, was driven by a reactive "response" register and a high negation rate --- the denial pattern the literature predicts. We therefore report the demographics-removed number as the trustworthy one.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{/Users/karan/Desktop/work/whissle/live_assist/lie_detection_binary/paper/figures/fig_case_study.png}
+\caption{How the model decides. Top: SHAP attribution by feature family --- visual behaviour dominates and generalises, but 14\% is a demographic-prediction confound. Bottom: per clip, a deceptive verdict is driven by a reactive register and negations, while a truthful verdict is driven largely by a demographic age guess.}
+\end{figure}
+
 \section{Cost Analysis}
 
 Because we never send the video, the LLM processes far fewer tokens. We measure this with the provider's \texttt{count\_tokens} API over a sample of clips (Table~\ref{tab:cost}):
