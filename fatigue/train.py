@@ -14,13 +14,16 @@ import json
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_score
 from sklearn.model_selection import LeaveOneGroupOut
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 
 from . import config as C
+from .visual import fatigue_visual_features
 from lie_detector.features.text_features import text_features, collect_metadata_vocab
-from lie_detector.features.visual_features import visual_features
 from lie_detector.features.audio_features import audio_features
 
 LANES = {
@@ -43,7 +46,7 @@ def build_matrix() -> pd.DataFrame:
     rows = []
     for av, audio in recs:
         feat = {f"txt_{k}": v for k, v in text_features(av, vocab).items()}
-        feat.update({f"vis_{k}": v for k, v in visual_features(av).items()})
+        feat.update({f"vis_{k}": v for k, v in fatigue_visual_features(av).items()})
         if audio:
             feat.update({f"aud_{k}": v for k, v in audio_features(audio).items()})
         feat["subject"] = av.get("subject")
@@ -57,13 +60,17 @@ def loso(df: pd.DataFrame, prefixes, classes=("alert", "drowsy")) -> dict:
     y = (d.label == classes[1]).astype(int).values
     groups = d.subject.values
     cols = [c for c in d.columns if any(c.startswith(p) for p in prefixes)]
-    X = d[cols].apply(pd.to_numeric, errors="coerce")
+    X = d[cols].apply(pd.to_numeric, errors="coerce").dropna(axis=1, how="all")
     probs = np.full(len(y), np.nan)
     for tr, te in LeaveOneGroupOut().split(X, y, groups):
         if len(set(y[tr])) < 2:
             probs[te] = y[tr].mean(); continue
-        clf = HistGradientBoostingClassifier(max_iter=150, learning_rate=0.06,
-                                             max_depth=2, random_state=0)
+        # robust on tiny folds: impute (fill 0 for all-NaN cols), scale, regularised LR
+        clf = make_pipeline(
+            SimpleImputer(strategy="constant", fill_value=0.0),
+            StandardScaler(),
+            LogisticRegression(max_iter=2000, C=0.3),
+        )
         clf.fit(X.iloc[tr], y[tr])
         probs[te] = clf.predict_proba(X.iloc[te])[:, 1]
     preds = (probs >= 0.5).astype(int)
