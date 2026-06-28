@@ -1,0 +1,5 @@
+# Dependencies for the local EAR drowsiness lane (fatigue/ear.py) ONLY.
+# Not needed for the core pipeline (the gateway does vision). Install with:
+#   pip install -r fatigue/requirements-ear.txt
+mediapipe>=0.10.14
+opencv-python>=4.9
